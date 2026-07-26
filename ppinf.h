@@ -135,8 +135,15 @@
 
 #define TEST_BRACE_2(...) 0, VOID DELAY_OPEN_BRACE_2()
 
-#define EQUAL_LENGTH(seq, seq2) \
+#define EQUAL_LENGTH_(seq, seq2) \
   EVAL2(IF_ELSE(TEST_BRACE_2 EVAL2(GEN_U(seq) GEN_BRACE_1_A seq2 YES GEN_BRACE_2_A seq2 GEN_BRACE_2_A seq), DELAY_CLOSE_BRACE_2() NO, YES))
+
+#define AND_YES_YES YES
+#define AND_YES_NO NO
+#define AND_NO_YES NO
+#define AND_NO_NO NO
+
+#define EQUAL_LENGTH(seq, seq2) CAT(AND_, CAT(EQUAL_LENGTH_(seq, seq2), CAT(_, EQUAL_LENGTH_(seq2, seq))))
 
 // EQUAL_LENGTH((a)(), (c)(d))  // YES
 // SLIDE_2((a)(b)(c)) // (a, b)(b, c)
