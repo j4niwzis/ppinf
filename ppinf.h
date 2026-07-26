@@ -1,5 +1,3 @@
-#pragma once
-
 #define EVAL2(...) __VA_ARGS__
 
 #define OUT
@@ -113,8 +111,8 @@
 
 #define ZIP(seq, seq2) ZIP_(REVERSE(seq), seq2)
 
-#define GEN_U_A(...) U GEN_U_B
-#define GEN_U_B(...) U GEN_U_A
+#define GEN_U_A(...) U DELAY_OPEN_BRACE_1() GEN_U_B
+#define GEN_U_B(...) U DELAY_OPEN_BRACE_1() GEN_U_A
 #define GEN_U_A_END
 #define GEN_U_B_END
 #define GEN_U(seq) CAT(GEN_U_A seq, _END)
@@ -131,20 +129,16 @@
 #define GEN_BRACE_2_B_END
 #define GEN_BRACE_2(seq) CAT__(EVAL2(GEN_BRACE_2_A seq), _END)
 
-#define U(...) __VA_ARGS__
+#define U_(...) __VA_ARGS__
+
+#define U(...) U_ __VA_ARGS__
 
 #define TEST_BRACE_2(...) 0, VOID DELAY_OPEN_BRACE_2()
 
-#define EQUAL_LENGTH_(seq, seq2) \
-  EVAL2(IF_ELSE(TEST_BRACE_2 EVAL2(GEN_U(seq) GEN_BRACE_1_A seq2 YES GEN_BRACE_2_A seq2), DELAY_CLOSE_BRACE_2() NO, YES))
+#define EQUAL_LENGTH(seq, seq2) \
+  EVAL2(IF_ELSE(TEST_BRACE_2 EVAL2(GEN_U(seq) GEN_BRACE_1_A seq2 YES GEN_BRACE_2_A seq2 GEN_BRACE_2_A seq), DELAY_CLOSE_BRACE_2() NO, YES))
 
-#define AND_YES_YES YES
-#define AND_YES_NO NO
-#define AND_NO_YES NO
-#define AND_NO_NO NO
-
-#define EQUAL_LENGTH(seq, seq2) CAT(AND_, CAT(EQUAL_LENGTH_(seq, seq2), CAT(_, EQUAL_LENGTH_(seq2, seq))))
-// EQUAL_LENGTH((a)(b), (a)) // NO
+// EQUAL_LENGTH((a)(), (c)(d))  // YES
 // SLIDE_2((a)(b)(c)) // (a, b)(b, c)
 // SLIDE_3((a)(b)(c)(d)(e)(f)) // (a, b, c)(b, c, d)(c, d, e)(d, e, f)
 // ZIP((a)(b)(c), (d)(e)(f))  // (a, d)(b, e)(c, f)
