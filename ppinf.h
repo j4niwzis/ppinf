@@ -145,6 +145,16 @@
 
 #define EQUAL_LENGTH(seq, seq2) CAT(AND_, CAT(EQUAL_LENGTH_(seq, seq2), CAT(_, EQUAL_LENGTH_(seq2, seq))))
 
+#define MULTIPLY_2(seq) seq seq
+
+#define GEN_MULTIPLY_2_A(...) MULTIPLY_2 DELAY_OPEN_BRACE_1() GEN_MULTIPLY_2_B
+#define GEN_MULTIPLY_2_B(...) MULTIPLY_2 DELAY_OPEN_BRACE_1() GEN_MULTIPLY_2_A
+#define GEN_MULTIPLY_2_A_END
+#define GEN_MULTIPLY_2_B_END
+#define GEN_MULTIPLY(seq) CAT(GEN_MULTIPLY_2_A seq, _END)
+
+#define EXPONENTIAL(seq) CAT(GEN_MULTIPLY(seq)(~) GEN_BRACE_2_A seq, _END)
+
 // EQUAL_LENGTH((a)(), (c)(d))  // YES
 // SLIDE_2((a)(b)(c)) // (a, b)(b, c)
 // SLIDE_3((a)(b)(c)(d)(e)(f)) // (a, b, c)(b, c, d)(c, d, e)(d, e, f)
