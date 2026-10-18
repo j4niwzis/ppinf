@@ -146,4 +146,90 @@ theorem recV_eq (g : Term) (ys : List Nat) (v0 : Nat) : ∀ n,
   | 0 => rfl
   | n + 1 => by simp only [recV]; rw [recV_eq g ys v0 n]
 
+/-- **Primitive recursion.** -/
+theorem node_prec (Γ : Env) (hp : PunctFree Γ) (π : List Code) (f g : Term) (hR : Realizes Γ (.prec f g) π)
+    (hga : g.arity = f.arity + 2) (IHf : NodeOK Γ f (π ++ [.f])) (IHg : NodeOK Γ g (π ++ [.r])) :
+    NodeOK Γ (.prec f g) π := by
+  intro x lp sep rp as vs hx hid hlp hsep hrp hk hargs hdis c
+  let m := f.arity
+  have hvs : vs.length = m + 1 := by rw [← argsOK_length hargs]; exact hk
+  obtain ⟨n, ys, rfl⟩ : ∃ n ys, vs = n :: ys := by
+    cases vs with
+    | nil => simp at hvs
+    | cons n ys => exact ⟨n, ys, rfl⟩
+  have hys : ys.length = m := by simpa using hvs
+  have hf : Γ.find x.s = some (.fn (m + 1) false (precBody π m)) := by rw [hx]; exact find_prec hR .self
+  have hplain : Plain (precBody π m) := by
+    unfold precBody; rw [prms_single_off, prms_eq]
+    refine plain_append (plain_append (plain_append (plain_append ?_ (plain_joinB _ ?_)) (plain_single _ (by simp [tk])))
+      (plain_tailB _)) ?_
+    · intro b hb; simp [nm, tk, prm] at hb
+      rcases hb with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp
+    · intro b hb; obtain ⟨i, _, rfl⟩ := List.mem_map.mp hb; exact plain_single _ (by simp [prm])
+    · intro b hb; simp [tk] at hb; subst hb; simp
+  obtain ⟨N, outs, c1, hos, hcall⟩ := call_plainP Γ hf hid hlp hsep hrp (by simpa [Term.arity] using hk)
+    (Or.inl (by omega)) (argShape_of_ok hargs) _ (expandsP_of_argsOK hargs) hplain c
+  rw [paramIdx_prec, List.append_assoc] at hos
+  obtain ⟨o0, oY, rfl, h0, hY⟩ := all2_append hos
+  obtain ⟨Y1, Y2, rfl, hY1, hY2⟩ := all2_append hY
+  obtain ⟨oN, rfl, hN, _⟩ := all2_single h0
+  have hY1' := all2_range_off1 hys (P := fun o y => IsNum o y ∧ Fin o) hY1
+  have hY2' := all2_range_off1 hys (P := fun o y => IsNum o y ∧ Fin o) hY2
+  have hY1l : Y1.length = m := by have := all2_length hY1'; omega
+  have hY2l : Y2.length = m := by have := all2_length hY2'; omega
+  have hY1n : All2 (fun Y y => IsNum Y y) Y1 ys := by
+    have := all2_map_fst (f := id) (S := fun Y y => IsNum Y y) (R := fun o y => IsNum o y ∧ Fin o) (fun o y h => h.1) hY1'
+    simpa using this
+  have hY2n : All2 (fun Y y => IsNum Y y) Y2 ys := by
+    have := all2_map_fst (f := id) (S := fun Y y => IsNum Y y) (R := fun o y => IsNum o y ∧ Fin o) (fun o y h => h.1) hY2'
+    simpa using this
+  -- the context
+  let K := x.s :: inter x.H rp.H
+  have hK : In π [.self] K := in_ctx hx hdis
+  let mk := markOne c K
+  have hin : ∀ t : Tok, t.H = [] → In π [.self] (mk t).H := fun t ht => in_markOne hK (in_of_nil ht) c
+  have hmk : ∀ t, (mk t).s = t.s := fun t => rfl
+  -- `B`, the base
+  let B := (baseToks π Y1 Y2).map mk
+  have hBshape : ArgShape B := by
+    rw [show B = (baseToks π Y1 Y2).map mk from rfl, map_baseToks]
+    refine argShape_base hmk ?_ ?_
+    · intro o ho; obtain ⟨o0, ho0, rfl⟩ := List.mem_map.mp ho
+      obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp ho0
+      unfold ArgShape; exact walk_num (isNum_markAll ((all2_iff.mp hY1n).2 i hi (by omega)) c K) 0
+    · intro o ho; obtain ⟨o0, ho0, rfl⟩ := List.mem_map.mp ho
+      obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp ho0
+      unfold ArgShape; exact walk_num (isNum_markAll ((all2_iff.mp hY2n).2 i hi (by omega)) c K) 0
+  have hBe := base_stage Γ hp (g := g) IHf hK hY1n hY2n hys c
+  -- `ITER ( n̄ , B )`
+  let oN' := oN.map mk
+  have hNn : IsNum oN' n := isNum_markAll hN c K
+  let T := callToks (mk { s := fullName π .ITER }) (mk { s := "(" }) (mk comma) (mk { s := ")" }) [oN', B]
+  have hTshape : ArgShape T := argShape_callA (by exact fullName_ne_rp _ _) (by exact fullName_ne_lp _ _)
+    (by exact fullName_ne_comma _ _) rfl rfl rfl _ (by
+      intro A hA; simp only [List.mem_cons, List.mem_nil_iff, or_false] at hA
+      rcases hA with rfl | rfl
+      · unfold ArgShape; exact walk_num hNn 0
+      · exact hBshape)
+  have hTe : ExpandsP Γ T (IsTuple n (recV g ys (f.eval ys) n) ys) := by
+    intro c0
+    obtain ⟨M, o, st, c', e, ho⟩ := iter_stage Γ hp hR hga IHg (L := [.self]) (by simp) (x := mk { s := fullName π .ITER })
+      (lp := mk { s := "(" }) (sep := mk comma) (rp := mk { s := ")" }) (A := oN') (B := B) hys rfl (hin _ rfl) rfl rfl rfl
+      (hin _ rfl) (by unfold ArgShape; exact walk_num hNn 0) (fun c2 => expands_num hp hNn c2) hBshape hBe c0
+    exact ⟨M, finalize o, st, c', by unfold expand; rw [show scan Γ M c0 T = some (o, st, c') from e]; rfl,
+      isTuple_map ho _ (fun t => rfl)⟩
+  -- `SEL ( T )`
+  obtain ⟨M, o, st, c', e1, ho⟩ := sel_stage Γ hp hR (L := [.self]) (by decide) (by decide)
+    (x := mk { s := fullName π .SEL }) (lp := mk { s := "(" }) (sep := mk comma) (rp := mk { s := ")" }) rfl (hin _ rfl)
+    rfl rfl rfl hTshape hTe c1
+  have e1' := scanMono Γ M c1 _ _ e1 (max N M) (Nat.le_max_right _ _)
+  obtain ⟨st', hfin⟩ := hcall (max N M) (Nat.le_max_left _ _) (o, st, c') (by
+    rw [show [oN] ++ (Y1 ++ Y2) = [oN] ++ Y1 ++ Y2 by simp, toks_prec π m oN Y1 Y2 hY1l hY2l, mark_callToks]
+    simp only [List.map_cons, List.map_nil]
+    rw [mark_callToks]; exact e1')
+  refine ⟨max N M + 1, o, st', c', hfin, ?_⟩
+  have : (Term.prec f g).eval (n :: ys) = recV g ys (f.eval ys) n := by
+    rw [recV_eq]; simp [Term.eval]
+  rw [this]; exact ho
+
 end PP
