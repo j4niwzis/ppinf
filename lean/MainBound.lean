@@ -346,4 +346,106 @@ theorem stop_round (Γ : Env) (ρ w : Nat) (IH : GLAt Γ ρ w) (p : Nat) :
         · have := hxR t (by simp [ht]); omega
         · exact hA2 t ht
 
+theorem preB_rank_le {Γ : Env} {ρ ρ' F : Nat} {A W : List Tok} (h : PreB Γ ρ F A W) (hρ : ρ ≤ ρ') : PreB Γ ρ' F A W := by
+  intro n c q e
+  obtain ⟨h1, h2, h3, T, h4, h5, h6, h7⟩ := h n c q e
+  exact ⟨h1, h2, h3, T, h4, h5, h6, fun t ht => Nat.le_trans (h7 t ht) hρ⟩
+
+/-- The induction on the number of top-rank tokens. -/
+theorem glAt (Γ : Env) (ρ : Nat)
+    (IHρ : ∀ a A W, Inv (A ++ W) → (∀ t ∈ A, rank Γ t ≤ ρ) → A.length ≤ a → PreB Γ ρ (B (maxBody Γ) ρ a) A W) :
+    ∀ w, GLAt Γ ρ w := by
+  intro w
+  induction w with
+  | zero =>
+    intro a A1 A2 W i r1 _ h1 h2
+    have : A2 = [] := List.eq_nil_of_length_eq_zero (by omega)
+    subst this
+    have pre := IHρ a A1 W (by simpa using i) r1 h1
+    have := preB_mono (preB_rank_le pre (Nat.le_succ ρ)) (show B (maxBody Γ) ρ a ≤ G (maxBody Γ) (B (maxBody Γ) ρ) 0 a by
+      simp [G])
+    simpa using this
+  | succ w ih =>
+    intro a A1 A2 W i r1 r2 h1 h2 n c q e
+    obtain ⟨o1, st1, c1, T, q', k, hA1, _, hq', rfl⟩ := pscan_split Γ A2 W n c A1 q e
+    have pre := IHρ a A1 (A2 ++ W) (by simpa using i) r1 h1 n c _ hA1
+    obtain ⟨b1, b2, b3, T', b4, b5, b6, b7⟩ := pre
+    simp only at b2 b3
+    have hT : T = T' := List.append_cancel_right (by simpa using b4 : T ++ (A2 ++ W) = T' ++ (A2 ++ W))
+    subst hT
+    have round : PreBAt Γ (ρ + 1) (Kf Γ ρ w (B (maxBody Γ) ρ a) + 6) W (T ++ A2) c1 q' := by
+      rcases pscan_stop_shape Γ (A2 ++ W) n c A1 _ hA1 with hS | ⟨x, R, hS, hs⟩
+      · have : T = [] := List.append_cancel_right (by simpa using hS : T ++ (A2 ++ W) = [] ++ (A2 ++ W))
+        subst this
+        have := lower_empty Γ ρ w ih (B (maxBody Γ) ρ a) A2 W k c1 q' (by simpa using b6) r2 h2 (by simpa using hq')
+        simpa using preBAt_mono this (show Kf Γ ρ w (B (maxBody Γ) ρ a) + 5 ≤ Kf Γ ρ w (B (maxBody Γ) ρ a) + 6 by omega)
+      · have : T = x :: R := List.append_cancel_right (by simpa using hS : T ++ (A2 ++ W) = (x :: R) ++ (A2 ++ W))
+        subst this
+        exact stop_round Γ ρ w ih (B (maxBody Γ) ρ a) x R A2 W k c1 q' hs (by simpa using b6) b7 b5 r2 h2 (by simpa using hq')
+    obtain ⟨d1, d2, d3, T2, d4, d5, d6, d7⟩ := round
+    have joined := pscan_join Γ A2 W _ c A1 o1 st1 c1 T b1 _ q' d1
+    have hG : B (maxBody Γ) ρ a + (Kf Γ ρ w (B (maxBody Γ) ρ a) + 6) ≤ G (maxBody Γ) (B (maxBody Γ) ρ) (w + 1) a := by
+      rw [G_succ]; omega
+    refine ⟨pscan_mono Γ W _ _ _ _ joined _ hG, ?_, ?_, T2, d4, ?_, d6, d7⟩
+    · simp; rw [G_succ]; omega
+    · simp; rw [G_succ]; omega
+    · rw [G_succ]; omega
+
+theorem G_mono_w (Lb : Nat) (Bρ : Nat → Nat) (hB : Mono Bρ) (hge : ∀ x, x + 1 ≤ Bρ x) :
+    ∀ w v x, w ≤ v → G Lb Bρ w x ≤ G Lb Bρ v x := by
+  intro w v x hwv
+  induction hwv with
+  | refl => exact Nat.le_refl _
+  | step _ ih' =>
+    rename_i m _
+    refine Nat.le_trans ih' ?_
+    cases m with
+    | zero => simp only [G]; have := G_ge Lb Bρ 0 x; omega
+    | succ m =>
+      have gx : G Lb Bρ (m + 1) x ≤ G Lb Bρ (m + 1) (Bρ x + (m + 1) + 1) :=
+        G_mono Lb _ hB (m + 1) _ _ (by have := hge x; omega)
+      simp only [G] at gx ⊢
+      omega
+
+/-- The bound, at every rank. -/
+theorem pre_bound (Γ : Env) : ∀ ρ a A W, Inv (A ++ W) → (∀ t ∈ A, rank Γ t ≤ ρ) → A.length ≤ a →
+    PreB Γ ρ (B (maxBody Γ) ρ a) A W := by
+  intro ρ
+  induction ρ with
+  | zero =>
+    intro a A W i r h
+    exact preB_mono (pre_zero Γ A W i r) (by simp [B]; omega)
+  | succ ρ ih =>
+    intro a A W i r h
+    have gl := glAt Γ ρ ih a 0 [] A W (by simpa using i) (by simp) r (by simp) h
+    refine preB_mono (by simpa using gl) ?_
+    simp only [B]
+    exact Nat.le_trans (G_mono _ _ (B_mono _ ρ) a 0 a (by omega)) (Nat.le_refl _)
+
+/-- Every rank is at most the number of the environment's macros. -/
+theorem rank_le (Γ : Env) (t : Tok) : rank Γ t ≤ (names Γ).length := by
+  unfold rank rk; exact List.length_filter_le _ _
+
+/-- **The upper bound.** A successful run from input tokens of length at most `n` is within
+    fuel `B R n + 2`, output `B R n + 1` and `B R n` steps, `R` the number of macros and `B`
+    defined by primitive recursion. -/
+theorem upper_bound (Γ : Env) (xs : List Tok) (h : ∀ t ∈ xs, t.o = 0 ∧ t.P = []) (n : Nat) (hn : xs.length ≤ n)
+    (fuel c : Nat) r (e : expand Γ fuel c xs = some r) :
+    let F := B (maxBody Γ) (names Γ).length n
+    expand Γ (F + 2) c xs = some r ∧ r.1.length ≤ F + 1 ∧ r.2.1.length ≤ F := by
+  intro F
+  have inv : Inv xs := ⟨fun t ht => by rw [(h t ht).2]; intro a ha; simp at ha, desc_of_input xs (fun t ht => (h t ht).2)⟩
+  have pre := pre_bound Γ (names Γ).length n xs [] (by simpa using inv) (fun t _ => rank_le Γ t) hn
+  have full := full_of_pre Γ xs F (fun n c q h => by
+    obtain ⟨x1, x2, x3, _⟩ := pre n c q h; exact ⟨x1, x2, x3⟩)
+  unfold expand at e
+  cases hs : scan Γ fuel c xs with
+  | none => simp [hs] at e
+  | some q =>
+    rw [hs] at e
+    simp only [Option.map_some, Option.some.injEq] at e
+    subst e
+    obtain ⟨hF, ho, hst⟩ := full fuel c q hs
+    refine ⟨by unfold expand; rw [hF]; rfl, by simp [finalize]; exact ho, hst⟩
+
 end PP
