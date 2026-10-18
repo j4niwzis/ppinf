@@ -277,4 +277,73 @@ theorem lower_empty (Γ : Env) (ρ w : Nat) (IH : GLAt Γ ρ w) (p : Nat) :
         have := rebuild_stop Γ W 0 c y R hs
         exact pscan_mono Γ W _ _ _ _ this _ (by omega)
 
+/-- A round after the lower part stopped: its stop, then at most `w + 1` top tokens. -/
+theorem stop_round (Γ : Env) (ρ w : Nat) (IH : GLAt Γ ρ w) (p : Nat) :
+    ∀ x R A2 W n c q, Stops Γ x R → Inv (x :: R ++ A2 ++ W) → (∀ t ∈ x :: R, rank Γ t ≤ ρ) → (x :: R).length ≤ p →
+      (∀ t ∈ A2, rank Γ t ≤ ρ + 1) → A2.length ≤ w + 1 →
+      pscan Γ W n c (x :: R ++ A2) = some q → PreBAt Γ (ρ + 1) (Kf Γ ρ w p + 6) W (x :: R ++ A2) c q := by
+  intro x R A2 W n c q hs i hxR hlxR hA2 hl e
+  have ⟨kf1, kf2, kf3⟩ := Kf_facts Γ ρ w p
+  obtain ⟨hid', ar, vr, bd, hf', hR⟩ := hs
+  cases n with
+  | zero => simp [pscan] at e
+  | succ k =>
+    rcases iter_cases Γ W k c x (R ++ A2) q (by simpa using e) with ⟨hp, q2, h2, rfl⟩ | ⟨body, _, _, _, _, hf, _⟩ |
+        ⟨arity, variadic, body, open_, inner, cl, rest, named, va, r, b, q2, hid, hf, hRA, hop, hc, hbd, hrs, hb, h2, rfl⟩ |
+        ⟨hs2, rfl⟩
+    · -- x passed by: then R is empty and A2 begins with something other than `(`
+      rcases hp with hh | ⟨_, hn⟩ | ⟨_, a', v', b', open_, after, hf2, hRA, hne⟩
+      · exact absurd hh hid'
+      · rw [hf'] at hn; simp at hn
+      · rcases hR with rfl | ⟨open', after0, rfl, hop', _⟩
+        · simp at hRA
+          have := lower_empty Γ ρ w IH p A2 W k c q2 (inv_tail (by simpa using i)) hA2 hl (by simpa using h2)
+          obtain ⟨c1, c2, c3, T, c4, c5, c6, c7⟩ := this
+          refine ⟨?_, by simp; omega, by simp; omega, T, c4, by omega, c6, c7⟩
+          have := rebuild_pass Γ W _ c x A2 (Or.inr (Or.inr ⟨hid', a', v', b', open_, after, hf2, hRA, hne⟩)) q2 c1
+          simpa using this
+        · simp at hRA; obtain ⟨rfl, _⟩ := hRA; simp [hop'] at hne
+    · rw [hf'] at hf; simp at hf
+    · rw [hf'] at hf; simp only [Option.some.injEq, Def.fn.injEq] at hf
+      obtain ⟨rfl, rfl, rfl⟩ := hf
+      rcases hR with rfl | ⟨open', after0, rfl, hop', hc0⟩
+      · -- R empty: the invocation is all in A2
+        simp at hRA
+        subst hRA
+        have hlen : inner.length + rest.length + 1 ≤ w := by simp at hl; omega
+        have hc' : closeAt 0 (([] ++ inner) ++ cl :: rest) [] = some ([] ++ inner, cl, rest) := by simpa using hc
+        have hbd' : bind ar vr ([] ++ inner) = some (named, va) := by simpa using hbd
+        have h := fn_round' Γ ρ w IH W p k c x open_ cl [] inner rest hid hf' hop hc' named va r b q2 hbd' hrs hb h2
+          (by simpa using i) (by simp) (fun t ht => hA2 t (by simp [ht])) (hA2 cl (by simp))
+          (fun t ht => hA2 t (by simp [ht])) (by simp) (by omega) (by omega)
+        have := preBAt_mono h (show Kf Γ ρ w p + 4 ≤ Kf Γ ρ w p + 6 by omega)
+        simpa using this
+      · -- R opened the invocation; its closing parenthesis is in A2
+        simp only [List.cons_append, List.cons.injEq] at hRA
+        obtain ⟨rfl, hRA⟩ := hRA
+        rw [← hRA] at hc
+        obtain ⟨pre, hin, hA⟩ := closeAt_past after0 A2 0 [] inner cl rest hc0 hc
+        simp only [List.reverse_nil, List.nil_append] at hin
+        subst hin; subst hA
+        have hlen : pre.length + rest.length + 1 ≤ w + 1 := by simp at hl; omega
+        have hl0 : after0.length ≤ p := by simp at hlxR; omega
+        have hc' : closeAt 0 ((after0 ++ pre) ++ cl :: rest) [] = some (after0 ++ pre, cl, rest) := by
+          rw [show (after0 ++ pre) ++ cl :: rest = after0 ++ (pre ++ cl :: rest) by simp]; exact hc
+        have h := fn_round' Γ ρ w IH W p k c x open' cl after0 pre rest hid hf' hop hc' named va r b q2 hbd hrs hb h2
+          (by simpa using i) (fun t ht => hxR t (by simp [ht])) (fun t ht => hA2 t (by simp [ht])) (hA2 cl (by simp))
+          (fun t ht => hA2 t (by simp [ht])) hl0 (by omega) (by omega)
+        have := preBAt_mono h (show Kf Γ ρ w p + 4 ≤ Kf Γ ρ w p + 6 by omega)
+        simpa using this
+    · -- a stop of the whole
+      refine ⟨?_, by simp, by simp, x :: (R ++ A2), by simp, by simp at hlxR hl ⊢; omega, by simpa using i, ?_⟩
+      · have := rebuild_stop Γ W 0 c x (R ++ A2) hs2
+        have := pscan_mono Γ W _ _ _ _ this (Kf Γ ρ w p + 6) (by omega)
+        simpa using this
+      · intro t ht
+        simp only [List.mem_cons, List.mem_append] at ht
+        rcases ht with rfl | ht | ht
+        · have := hxR t (by simp); omega
+        · have := hxR t (by simp [ht]); omega
+        · exact hA2 t ht
+
 end PP
