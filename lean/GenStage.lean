@@ -179,4 +179,61 @@ theorem cat2_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} 
     rw [toks_cat2, mark_callToks]; exact e1')
   exact ⟨max N M + 1, o, st', c', hfin', ho, hfin⟩
 
+theorem toks_gen (π : List Code) (o : List Tok) :
+    toks (plainOut [nm π .CAT2, tk "(", nm π .GA, prm 0, tk ",", tk "_END", tk ")"] [o]) =
+      callToks { s := fullName π .CAT2 } { s := "(" } comma { s := ")" } [{ s := fullName π .GA } :: o, [{ s := "_END" }]] := by
+  simp only [nm, tk, prm, plainOut, toks_t]
+  rw [toks_map_t]
+  simp [toks, tokOf, callToks, joinArgs, comma]
+
+/-- **`GEN ( n̄ )` → `(TH ( )ⁿ`.** -/
+theorem gen_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} (hR : Realizes Γ (.prec f g) π)
+    {L : List Helper} (hL : ∀ y ∈ L, y ≠ .GEN ∧ y ≠ .CAT2 ∧ y ≠ .CAT2u ∧ y ≠ .GA ∧ y ≠ .GB ∧ y ≠ .TH ∧ y ≠ .D1 ∧
+      y ≠ .D0 ∧ y ≠ .OUT ∧ y ≠ .GAEND ∧ y ≠ .GBEND)
+    {x lp sep rp : Tok} {Nm : List Tok} {n : Nat} (hx : x.s = fullName π .GEN) (hxH : In π L x.H)
+    (hlp : lp.s = "(") (hsep : sep.s = ",") (hrp : rp.s = ")") (hrpH : In π L rp.H) (hN : IsNum Nm n) (c : Nat) :
+    ∃ M o st c', scan Γ M c (callToks x lp sep rp [Nm]) = some (o, st, c') ∧
+      o.map (·.s) = (List.replicate n [fullName π .TH, "("]).flatten ∧ ∀ t ∈ o, t.s ∉ t.H := by
+  let Ps : Nat → List Tok → Prop := fun j o => j = 0 → IsNum o n
+  have hargs : ∀ j, ExpandsP Γ ([Nm].getD j []) (Ps j) := by
+    intro j c0
+    match j with
+    | 0 =>
+      have e := scan_nameFree' (nameFree_num hp hN) c0
+      exact ⟨_, finalize Nm, [], c0, by simp only [List.getD, expand]; rw [show [Nm][0]?.getD [] = Nm from rfl, e]; rfl,
+        fun _ => isNum_finalize' hN⟩
+    | j + 1 => exact ⟨1, [], [], c0, by simp [expand, scan, finalize], fun h => absurd h (by omega)⟩
+  have hf : Γ.find x.s = some (.fn 1 false [nm π .CAT2, tk "(", nm π .GA, prm 0, tk ",", tk "_END", tk ")"]) := by
+    rw [hx]; exact find_prec hR .GEN
+  have hplain : Plain [nm π .CAT2, tk "(", nm π .GA, prm 0, tk ",", tk "_END", tk ")"] := by
+    intro b hb; simp [nm, tk, prm] at hb; rcases hb with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp
+  obtain ⟨N, outs, c1, hos, hcall⟩ := call_plainP Γ hf (by rw [hx]; exact not_mem_of_in hxH (fun h => (hL _ h).1 rfl))
+    hlp hsep hrp rfl (Or.inl (by decide)) (by intro A hA; simp at hA; subst hA; unfold ArgShape; exact walk_num hN 0)
+    Ps hargs hplain c
+  have hpi : paramIdx [nm π .CAT2, tk "(", nm π .GA, prm 0, tk ",", tk "_END", tk ")"] = [0] := by
+    simp [nm, tk, prm, paramIdx]
+  rw [hpi] at hos
+  obtain ⟨o0, rfl, ho0, hfin0⟩ := all2_single hos
+  let K := x.s :: inter x.H rp.H
+  have hK : In π (.GEN :: L) K := by show In π (.GEN :: L) (x.s :: inter x.H rp.H); rw [hx]; exact in_mark hxH _ _
+  have hbody : ∀ s, In π (.GEN :: L) (markOne c K { s }).H := fun s => in_markOne hK (in_nil _ _) c
+  obtain ⟨M, o, st, c', e1, ho, hfin⟩ := cat2_stage Γ hp hR (L := .GEN :: L)
+    (by
+      intro y hy; simp at hy
+      rcases hy with rfl | hy
+      · decide
+      · have h := hL y hy; exact h.2)
+    (x := markOne c K { s := fullName π .CAT2 }) (lp := markOne c K { s := "(" }) (sep := markOne c K comma)
+    (rp := markOne c K { s := ")" }) (ga := markOne c K { s := fullName π .GA }) (e := markOne c K { s := "_END" })
+    (Nm := o0.map (markOne c K)) (n := n)
+    rfl (hbody _) rfl rfl rfl (hbody _) rfl (hbody _) (isNum_markAll (ho0 rfl) c K)
+    (by
+      intro t ht; obtain ⟨t0, ht0, rfl⟩ := List.mem_map.mp ht
+      exact inJ_marked hK (hfin0 t0 ht0) (num_not_name (ho0 rfl) t0 ht0) c)
+    rfl (hbody _) c1
+  have e1' := scanMono Γ M c1 _ _ e1 (max N M) (Nat.le_max_right _ _)
+  obtain ⟨st', hfin'⟩ := hcall (max N M) (Nat.le_max_left _ _) (o, st, c') (by
+    rw [toks_gen, mark_callToks]; exact e1')
+  exact ⟨max N M + 1, o, st', c', hfin', ho, hfin⟩
+
 end PP
