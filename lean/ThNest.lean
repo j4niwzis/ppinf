@@ -91,4 +91,44 @@ theorem th_level (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} (h
     rw [toks_th, mark_eq, List.map_cons, map_tupToks]; exact e1')
   exact ⟨_, o', st', c', efin, ho'⟩
 
+/-- `TH ( TH ( … S … ) )`, outermost first. -/
+def nest : List (Tok × Tok × Tok) → List Tok → List Tok
+  | [], S => S
+  | (t, l, r) :: ls, S => t :: l :: (nest ls S ++ [r])
+
+/-- The recursion's values: `v₀`, then `g(k, vₖ, ȳ)`. -/
+def recV (g : Term) (ys : List Nat) (v0 : Nat) : Nat → Nat
+  | 0 => v0
+  | k + 1 => g.eval (k :: recV g ys v0 k :: ys)
+
+theorem nest_shape {S : List Tok} (hS : ArgShape S) {π : List Code} :
+    ∀ ls : List (Tok × Tok × Tok), (∀ q ∈ ls, q.1.s = fullName π .TH ∧ q.2.1.s = "(" ∧ q.2.2.s = ")") →
+      ArgShape (nest ls S)
+  | [], _ => hS
+  | (t, l, r) :: ls, h => by
+    obtain ⟨h1, h2, h3⟩ := h (t, l, r) (by simp)
+    have := argShape_wrap (t := t) (l := l) (r := r) (by rw [h1]; exact fullName_ne_rp _ _) (by rw [h1]; exact fullName_ne_lp _ _)
+      (by rw [h1]; exact fullName_ne_comma _ _) h2 h3 (nest_shape hS ls (fun q hq => h q (by simp [hq])))
+    simpa [nest] using this
+
+/-- **`n` levels.** -/
+theorem th_nest (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} (hR : Realizes Γ (.prec f g) π)
+    (hga : g.arity = f.arity + 2) (IHg : NodeOK Γ g (π ++ [.r])) {L : List Helper} (hTH : Helper.TH ∉ L)
+    (hSTEP : Helper.STEP ∉ L) {S : List Tok} {v0 : Nat} {ys : List Nat} (hys : ys.length = f.arity)
+    (hS : IsTuple 0 v0 ys S) :
+    ∀ ls : List (Tok × Tok × Tok), (∀ q ∈ ls, q.1.s = fullName π .TH ∧ In π L q.1.H ∧ q.2.1.s = "(" ∧ q.2.2.s = ")") →
+      ∀ c0, ∃ M o st c', scan Γ M c0 (nest ls S) = some (o, st, c') ∧ IsTuple ls.length (recV g ys v0 ls.length) ys o
+  | [], _, c0 => ⟨_, S, [], c0, scan_nameFree' (isTuple_nameFree hp hS) c0, hS⟩
+  | (t, l, r) :: ls, h, c0 => by
+    obtain ⟨h1, h2, h3, h4⟩ := h (t, l, r) (by simp)
+    have hrest : ∀ q ∈ ls, q.1.s = fullName π .TH ∧ In π L q.1.H ∧ q.2.1.s = "(" ∧ q.2.2.s = ")" :=
+      fun q hq => h q (by simp [hq])
+    have hT : ArgShape (nest ls S) := nest_shape (isTuple_shape hS) ls (fun q hq => let e := hrest q hq; ⟨e.1, e.2.2⟩)
+    have hTe : ExpandsP Γ (nest ls S) (IsTuple ls.length (recV g ys v0 ls.length) ys) := by
+      intro c1
+      obtain ⟨M, o, st, c', e, ho⟩ := th_nest Γ hp hR hga IHg hTH hSTEP hys hS ls hrest c1
+      exact ⟨M, finalize o, st, c', by simp [expand, e], isTuple_map ho _ (fun t => rfl)⟩
+    obtain ⟨M, o, st, c', e, ho⟩ := th_level Γ hp hR hga IHg hTH hSTEP (sep := comma) hys h1 h2 h3 rfl h4 hT hTe c0
+    exact ⟨M, o, st, c', by simpa [callToks, joinArgs, nest] using e, by simpa [recV] using ho⟩
+
 end PP
