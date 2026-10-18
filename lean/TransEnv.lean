@@ -22,7 +22,7 @@ def Term.denv : Term → String → Env
   | .succ, p => [(p, .fn 1 false [prm 0, tk "(", tk "~", tk ")"])]
   | .proj k i, p => [(p, .fn k false [prm i])]
   | .comp k h gs, p =>
-    let gnames := (List.range gs.length).map fun j => s!"{p}g{j}"
+    let gnames := (List.range gs.length).map fun j => s!"{p}k{iStr j}k"
     let calls := gnames.map fun g => [tk g, tk "("] ++ joinB ((prms k).map ([·])) ++ [tk ")"]
     (p, .fn k false ([tk s!"{p}h", tk "("] ++ joinB calls ++ [tk ")"])) ::
       (h.denv s!"{p}h" ++ (gs.attach.zip gnames).flatMap fun (⟨g, _⟩, n) => g.denv n)
@@ -33,7 +33,7 @@ def Term.denv : Term → String → Env
      (s!"{p}SEL", .fn 1 false [tk s!"{p}SEL2", prm 0]),
      (s!"{p}SEL2", .fn 2 true [prm 1]),
      (s!"{p}TH", .fn 1 false [tk s!"{p}STEP", prm 0]),
-     (s!"{p}STEP", .fn (m + 2) false ([tk "(", prm 0, tk "(", tk "~", tk ")", tk ",", tk s!"{p}g", tk "(", prm 0, tk ",", prm 1]
+     (s!"{p}STEP", .fn (m + 2) false ([tk "(", prm 0, tk "(", tk "~", tk ")", tk ",", tk s!"{p}r", tk "(", prm 0, tk ",", prm 1]
         ++ tailB (prms m 2) ++ [tk ")"] ++ tailB (prms m 2) ++ [tk ")"])),
      (s!"{p}ITER", .fn 2 false [tk s!"{p}CAT", tk "(", tk s!"{p}GEN", tk "(", prm 0, tk ")", prm 1, tk s!"{p}BRA", prm 0,
         tk ",", tk "_END", tk ")"]),
@@ -52,6 +52,6 @@ def Term.denv : Term → String → Env
      (s!"{p}CAT", .fn 2 false [tk s!"{p}CAT_", tk "(", prm 0, tk ",", prm 1, tk ")"]),
      (s!"{p}CAT_", .fn 2 false [prm 0, .paste, prm 1]),
      (s!"{p}CAT2", .fn 2 false [tk s!"{p}CAT2_", tk "(", prm 0, tk ",", prm 1, tk ")"]),
-     (s!"{p}CAT2_", .fn 2 false [prm 0, .paste, prm 1])] ++ f.denv s!"{p}f" ++ g.denv s!"{p}g"
+     (s!"{p}CAT2_", .fn 2 false [prm 0, .paste, prm 1])] ++ f.denv s!"{p}f" ++ g.denv s!"{p}r"
 
 end PP
