@@ -24,9 +24,10 @@ theorem a_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} (hR
     (hlp : lp.s = "(") (hsep : sep.s = ",") (hrp : rp.s = ")") (hrpH : In π L rp.H) (hN : IsNum Nm n)
     (hS : NameFree Γ S) (hb : bra.s = fullName π .BRA) (hbH : In π L bra.H) (hN2 : IsNum Nm2 n)
     (hN2H : ∀ t ∈ Nm2, InJ π L t.H) (c : Nat) :
-    ∃ M o st c', scan Γ M c (callToks x lp sep rp [Nm] ++ (S ++ bra :: Nm2)) = some (o, st, c') ∧
-      o.map (·.s) = (List.replicate n [fullName π .TH, "("]).flatten ++ S.map (·.s) ++ List.replicate n ")" ++
-        [if n % 2 = 0 then fullName π .BRA else fullName π .BRB] ∧ ∀ t ∈ o, t ∈ S ∨ t.s ∉ t.H := by
+    ∃ M o1 o2 st c', scan Γ M c (callToks x lp sep rp [Nm] ++ (S ++ bra :: Nm2)) = some (o1 ++ (S ++ o2), st, c') ∧
+      o1.map (·.s) = (List.replicate n [fullName π .TH, "("]).flatten ∧
+      o2.map (·.s) = List.replicate n ")" ++ [if n % 2 = 0 then fullName π .BRA else fullName π .BRB] ∧
+      (∀ t ∈ o1, t.s ∉ t.H) ∧ ∀ t ∈ o2, t.s ∉ t.H := by
   obtain ⟨M1, o1, st1, c1, e1, ho1, hfin1⟩ := gen_stage Γ hp hR (fun y hy => let h := hL y hy;
     ⟨h.1, h.2.1, h.2.2.1, h.2.2.2.1, h.2.2.2.2.1, h.2.2.2.2.2.1, h.2.2.2.2.2.2.1, h.2.2.2.2.2.2.2.1,
       h.2.2.2.2.2.2.2.2.1, h.2.2.2.2.2.2.2.2.2.1, h.2.2.2.2.2.2.2.2.2.2.1⟩) hx hxH hlp hsep hrp hrpH hN c
@@ -57,13 +58,6 @@ theorem a_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} (hR
       rw [List.replicate_succ', List.flatten_append] at this
       simp at this; exact this.symm
   have e3 := scan_frame2 Γ _ _ M1 c (o1, st1, c1) e1 hlast _ _ e2'
-  refine ⟨_, _, _, _, e3, ?_, ?_⟩
-  · simp only [List.map_append, ho1, ho2, hGl]; simp
-  · intro t ht
-    simp only [List.mem_append] at ht
-    rcases ht with ht | ht | ht
-    · exact Or.inr (hfin1 t ht)
-    · exact Or.inl ht
-    · exact Or.inr (hfin2 t ht)
+  exact ⟨_, o1, o2, _, _, e3, ho1, by rw [ho2, hGl], hfin1, hfin2⟩
 
 end PP
