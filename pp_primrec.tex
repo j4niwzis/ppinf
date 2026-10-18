@@ -1,0 +1,306 @@
+\documentclass[10pt]{article}
+\usepackage[margin=2cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{stmaryrd}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=*}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newcommand{\Sc}{S}\newcommand{\Ex}{E}\newcommand{\Mk}{M}\newcommand{\Fn}{F}\newcommand{\Pp}{P}
+\newcommand{\orig}{\operatorname{orig}}\newcommand{\lev}{\operatorname{lev}}
+\newcommand{\tok}[1]{\texttt{#1}}
+\begin{document}
+\sloppy
+\begin{center}{\large\bfseries Macro expansion: hide-set bounds, levels, and primitive recursion}\end{center}
+
+\section{Reduction rules}
+Tokens are $a^H$: spelling $a$, hidden names $H$. Sequences $U,V$ are joined by juxtaposition; $\epsilon$ is empty. Fresh tokens
+have $H=\emptyset$. The environment contains $\Gamma(m)=B$ or $\Gamma(m)=(\vec x,B)$; all operations use this same $\Gamma$.
+\[
+\Mk_K(a^H)=a^{H\cup K},\qquad
+\Fn(a^H)=\begin{cases}a^{\{a\}}& a\in H,\\ a^{\emptyset}& a\notin H\end{cases}\qquad(\Mk,\Fn\text{ act tokenwise}).
+\]
+\textbf{Scan.} A head $m^H$ is \emph{eligible} when $m\notin H$, $\Gamma(m)$ is defined, and a function-like macro is
+immediately followed by \tok{(}.
+\begin{gather*}
+\Ex(U)\to\Fn(\Sc(U)),\qquad \Sc(\epsilon)\to\epsilon,\qquad \Sc(a^HU)\to a^H\,\Sc(U)\ \text{ if the head is not eligible},\\
+\frac{\Gamma(m)=B\quad m\notin H}{\Sc(m^HU)\to\Sc\big(\Mk_{\{m\}\cup H}(\Pp(B))\,U\big)}\ (\text{object})\qquad
+\frac{\Gamma(m)=(\vec x,B)\quad m\notin H\quad \vec A\text{ binds }\vec x}{\Sc\big(m^H(\vec A)^JU\big)\to\Sc\big(\Mk_{\{m\}\cup(H\cap J)}(\Pp(\mathrm{sub}_{\vec A}(B)))\,U\big)}\ (\text{function})
+\end{gather*}
+Arguments split at commas outside nested parentheses; the variadic slot is the comma-joined suffix. $J$ belongs to the
+matching closing parenthesis.
+
+\textbf{Substitution.} For each original parameter occurrence $x_i$ in $B$: $\mathrm{sub}_{\vec A}(x_i)=A_i$ if adjacent to
+\tok{\#\#} and $A_i\neq\epsilon$; $\square$ if adjacent to \tok{\#\#} and $A_i=\epsilon$; $\Ex(A_i)$ otherwise. Other body
+tokens are copied. Each required $\Ex(A_i)$ is computed on $A_i$ alone, before rescanning; unused arguments are not
+expanded.
+
+\textbf{Pasting.} $\Pp$ reduces the original \tok{\#\#} operators of the replacement list left to right, then erases
+placemarkers:
+$a^H\,\tok{\#\#}\,b^J\to(ab)^{H\cap J}$,\ $\square\,\tok{\#\#}\,a^H\to a^H$,\ $a^H\,\tok{\#\#}\,\square\to a^H$,\
+$\square\,\tok{\#\#}\,\square\to\square$; $ab$ is a single token, defined only when it exists. For multi-token operands
+only the adjacent boundary tokens are pasted; generated tokens never become paste operators.
+
+\textbf{Constants of $\Gamma$.} $\mathcal M=\operatorname{dom}\Gamma$, $n_\Gamma=|\mathcal M|$; $L$ is the maximal body
+length; $k$ the maximal number of occurrences of one parameter in a body.
+
+\section{Origins and the trick}
+\begin{definition}
+Every rewrite step $e$ by the object or function rule has the \emph{mark} $P_e=\{m\}\cup H$, resp.\ $\{m\}\cup(H\cap J)$.
+Every token of $\Mk_{P_e}(\cdots)$ produced by $e$, including substituted argument tokens, has \emph{origin}
+$\orig=e$. Input tokens have origin $\bot$, $P_\bot=\emptyset$. Origins are ordered by production: $e\prec e'$ if $e'$ is
+performed while scanning a token sequence containing the head of $e'$ produced (transitively) inside $e$.
+\end{definition}
+\begin{definition}
+An invocation is a \emph{trick step} if its closing parenthesis has an origin strictly outer than the origin of its head.
+A run without trick steps is \emph{trick-free}. The \emph{trick} of the introduction (macros returning one another, fed
+with parenthesised groups) is exactly a sequence of trick steps; the groups may come from the text after the call or from
+arguments copied into a replacement --- both are of outer origin.
+\end{definition}
+
+\begin{lemma}\label{l:inv}
+A token of origin $e$ has hidden set $\supseteq P_e$ while it is scanned.
+\end{lemma}
+\begin{proof}
+$\Mk_{P_e}$ is applied after $\Pp$ and after substitution of the already-finalised $\Ex(A_i)$, hence to every token of
+the replacement; scanning does not rewrite hidden sets of tokens it passes.
+\end{proof}
+
+\begin{lemma}\label{l:grow}
+If an invocation of $m$ is not a trick step and its head has origin $e$, then $m\notin P_e$ and the new mark is
+$\supseteq P_e\cup\{m\}$.
+\end{lemma}
+\begin{proof}
+By Lemma~\ref{l:inv}, $H\supseteq P_e$ and $J\supseteq P_e$, so $H\cap J\supseteq P_e$; eligibility gives $m\notin H$.
+\end{proof}
+
+\begin{lemma}\label{l:args}
+In a trick-free invocation whose head has origin $e$, every argument token has origin $e$.
+\end{lemma}
+\begin{proof}
+Scanning is left to right; at the head, the stream is the unscanned rest of the replacement of $e$ followed by outer
+material. The closing parenthesis has origin $e$, so it and everything between lie in the first part.
+\end{proof}
+
+\begin{proposition}[trick-free bound]\label{p:free}
+If the input is one invocation whose arguments contain no name of $\mathcal M$ and the run is trick-free, the number of
+rewrite steps is at most a constant $C(n_\Gamma,L,k)$, and the output length is at most $a\,|\text{input}|+b$ with
+$a,b$ depending on $\Gamma$ only.
+\end{proposition}
+\begin{proof}
+Let the parent of a step be the origin of its head. By Lemma~\ref{l:grow} marks strictly increase along parent chains,
+so the step tree has depth $\le n_\Gamma$. Let $N_t$ bound the number of names of $\mathcal M$ among tokens of origin
+$e$ for $e$ at depth $t$; children of $e$ are heads of origin $e$, so branching at depth $t$ is $\le N_t$. Input
+arguments carry no names, hence $N_0\le L$. For depth $t\ge1$, by Lemma~\ref{l:args} arguments come from the parent's
+tokens ($\le N_{t-1}$ names) and from replacements of siblings expanded inside them during $\Ex(A_i)$; each sibling
+uses a strictly smaller argument region of the same $A_i$, so a recursion on the number $j\le N_{t-1}$ of enclosed heads,
+$Q_t(j)\le L+Lk\,(N_{t-1}+\max_{\sum j_i<j}\sum_i Q_t(j_i))$, is finite and gives $N_t\le Q_t(N_{t-1})$. Hence
+$\#\text{steps}\le\sum_{t\le n_\Gamma}\prod_{s<t}N_s=:C$. Name-free tokens are only copied ($\le k$ times per
+parameter per step), which yields the linear bound on length.
+\end{proof}
+
+\begin{corollary}\label{c:only}
+Along a parent chain, marks lose names only through $H\cap J$ with $J$ of outer origin, i.e.\ only at trick steps
+(Lemma~\ref{l:grow}). Trick steps are therefore the only source of dependence of the number of steps on the input.
+\end{corollary}
+\begin{remark}
+Hidden sets of individual tokens lose names in a second way: $\Fn$ keeps only a token's own spelling, so every token of
+a pre-expanded argument leaves $\Ex(A_i)$ with $H\subseteq\{a\}$ (a \tok{)} with $H=\emptyset$). Lemma~\ref{l:inv} is not
+affected, since $\Mk_{P_e}$ is applied after $\Fn$; such a loss shows only later, as a small $J$ in some $H\cap J$, that
+is, at a trick step.
+\end{remark}
+
+\section{Levels and the upper bound}
+\begin{definition}
+The call graph $G_\Gamma$ has an edge $m\to m'$ when $m'$ is spelled in a token of the body of $m$ (directly, or as a
+possible paste result). A \emph{pass set} is a strongly connected component of $G_\Gamma$; it is \emph{non-trivial}
+when it contains a cycle (two or more macros, or one with an edge to itself). The level $\lev(m)$ is the largest number
+of non-trivial components on a path of the condensation DAG starting at the component of $m$, that component included.
+So $\lev=0$ exactly when no cycle is reachable; the pass \tok{GEN\_MULTIPLY\_2\_A/B} has level 1, and \tok{TGEN\_EXP\_A/B},
+which reaches it, level 2. Levels are bounded by $n_\Gamma$ and fixed by the source: expansion never creates definitions, since a
+macro-replaced sequence is not processed as a directive (C11 6.10.3.4p3).
+\end{definition}
+
+\begin{lemma}[cycles need the trick]\label{l:cyc}
+Along a parent chain without trick steps every macro occurs at most once. Consequently a macro of a pass set can be
+re-invoked below its own active invocation only through a trick step.
+\end{lemma}
+\begin{proof}
+By Lemma~\ref{l:grow} each step of the chain adds its macro to the mark and keeps all earlier ones; a macro already in the
+mark is not eligible.
+\end{proof}
+
+\begin{lemma}[one group, one step]\label{l:once}
+Each closing parenthesis token is consumed by at most one invocation. Hence, while scanning a stream $V$, the number of
+trick steps whose closing parenthesis comes from $V$ is at most the number of \tok{)} in $V$, so at most $|V|$.
+\end{lemma}
+\begin{proof}
+The function rule removes the matched parenthesis together with the invocation.
+\end{proof}
+
+\begin{definition}
+A \emph{pass} of level $N$ is a maximal run of trick steps of macros of one pass set of level $N$ that consume groups of
+one outer stream $V$. By Lemma~\ref{l:once} a pass has at most $|V|$ steps; a re-invocation of the same pass set inside
+the pass (``self call'') consumes groups of the same $V$ and thus only continues it, never multiplies it.
+\end{definition}
+
+\begin{theorem}[upper bound]\label{t:up}
+Let $\Lambda=\max\lev$ over $\mathcal M$. There are constants $c,d,p$ depending on $\Gamma$ such that, for input length
+$n$, both the number of rewrite steps and the output length are at most $\Phi_\Lambda^{(p)}(c\,n+d)$, where
+\[
+\Phi_0(x)=2x,\qquad \Phi_{N}(x)=\Phi_{N-1}^{(x)}(x)\quad(N\ge1).
+\]
+In particular every function computed by preprocessing a fixed $\Gamma$ is primitive recursive; $\Phi_N$ lies at row
+$N+2$ of the Ackermann hierarchy (row 3: exponentiation, row 4: tetration, \dots): $\Phi_1(x)=x\,2^x$; the bound, a
+fixed iterate of it, lies in the Grzegorczyk class $\mathcal E^{\Lambda+2}$.
+\end{theorem}
+\begin{remark}
+The iterate is needed: \tok{EXP2(s)}$=$\tok{EXPONENTIAL(EXPONENTIAL(s))} has $\Lambda=1$ and yields $2^{2^n}$ groups
+($n=1,2,3,4\mapsto 4,16,256,65536$, \texttt{exp2\_check.c}), which no $\Phi_1(cn+d)$ bounds; a fixed number of passes of
+one level composes to a fixed iterate of that level. Checked in Lean (\texttt{lean/Phi.lean}): $\Phi_1(x)=x\,2^x$;
+$\Phi_1(cn+d)<2^{2^n}$ for some $n$, for all $c,d$; and what the proof below uses --- each $\Phi_N$ is monotone with
+$x\le\Phi_N(x)$, and $(\Phi_N^{(p)})^{(x)}(y)\le\Phi_{N+1}(p\,y)$ for $p\ge1$, $x\le y$.
+\end{remark}
+\begin{proof}[Proof of Theorem~\ref{t:up}]
+Induction on $N$ for streams in which only macros of level $\le N$ occur as eligible heads; write
+$B_N=\Phi_N^{(p_N)}$ for the bound at level $N$. $N=0$: no pass sets with
+cycles are reachable, the run is trick-free relative to every expansion, and Proposition~\ref{p:free} gives linear length
+and constant steps per invocation; at most $n$ heads are present, so both quantities are $\le c\,n+d\le\Phi_0(cn+d)$
+after adjusting constants ($p_0=1$). $N\ge1$: scan a stream $V$, $|V|=x$. Steps of level $<N$ are handled by the induction
+hypothesis on the stream they currently operate on. A level-$N$ pass makes at most $x$ steps (Lemma~\ref{l:once}); each
+step emits a bounded body whose names are of level $<N$ (calls into the own pass set continue the pass, by
+Lemma~\ref{l:cyc} and the definition) and may wrap the current material as an argument of such a macro, so the length
+after $i$ steps is bounded by the $i$-fold application of the level-$(N-1)$ bound $B_{N-1}$. After at most $x$ steps
+the length is $\le B_{N-1}^{(x)}(y)\le\Phi_N(p_{N-1}\,y)$ with $y=cx+d\ge x$; the number of steps is bounded by the same
+expression, since every step needs at least one token of the current stream. A bounded number (depending on $\Gamma$) of
+passes and of level-$N$ invocations in sequence --- \tok{EXP2} above --- composes to a fixed iterate:
+$B_N=\Phi_N^{(p_N)}$ on a linear argument, by monotonicity.
+\end{proof}
+
+\section{Lower bound (constructions of \texttt{ppinf.h})}
+Sequences are encoded as $(a_1)(a_2)\dots(a_n)$. All constructions below are taken from \texttt{ppinf.h}
+(\texttt{github.com/j4niwzis/ppinf}, commit \texttt{3e15f7d}); outputs were checked with \texttt{clang -E}.
+\begin{itemize}
+\item \emph{Pass with sentinel.} \tok{X\_A(\ldots)\,\ldots\,X\_B} and \tok{X\_B(\ldots)\,\ldots\,X\_A} alternate; every group
+of the sequence is consumed by one trick step; the last emitted name is pasted with \tok{\_END} by \tok{CAT} into an empty
+object macro \tok{X\_A\_END}/\tok{X\_B\_END}. Instances: \tok{WRAP\_SEQ}, \tok{REMOVE\_EDGES}, \tok{SLIDE\_3\_A/B},
+\tok{REVERSE\_A/B}, \tok{NESTED\_*}, \tok{GEN\_U\_A/B}, \tok{GEN\_MULTIPLY\_2\_A/B}.
+\item \emph{Deferral.} \tok{DELAY\_X\_k()} produces \tok{X} only after $k$ further rescans
+(\tok{DELAY\_OPEN\_BRACE\_k}, \tok{DELAY\_CLOSE\_BRACE\_k}, \tok{DELAY\_COMMA\_k}, \tok{DELAY\_OUT\_k}); this places
+parentheses so that heads produced in one rescan meet groups of outer origin in the next.
+\item \emph{Branching.} \tok{IF\_ELSE(c,t,f)} selects by whether \tok{c} expands to a probe \tok{0,} (e.g.\
+\tok{CAT(TEST\_NULL\_, x)} with \tok{TEST\_NULL\_NULL} $\mapsto$ \tok{0,}); likewise \tok{TEST\_RIGHT\_EDGE\_*},
+\tok{TEST\_BRACE}.
+\item \emph{Sequence operations.} \tok{SLIDE\_2}, \tok{SLIDE\_3}, \tok{ZIP}, \tok{REVERSE}, \tok{EQUAL\_LENGTH}; e.g.\
+\tok{ZIP((a)(b)(c),(d)(e)(f))} $=$ \tok{(a,d)(b,e)(c,f)}, \tok{EQUAL\_LENGTH((a)(b)(c),(c)(d))} $=$ \tok{NO}.
+\end{itemize}
+
+\begin{example}[level 1: exponentiation]
+\tok{MULTIPLY\_2(s)} $=$ \tok{s s} is level 0. The pass \tok{GEN\_MULTIPLY\_2\_A} emits \tok{MULTIPLY\_2(} once per
+group, the pass \tok{GEN\_BRACE\_2\_A} emits the matching \tok{)}, and
+\[
+\tok{EXPONENTIAL(s)}=\tok{CAT(GEN\_MULTIPLY(s)(\textasciitilde) GEN\_BRACE\_2\_A s, \_END)}
+\]
+yields $2^{n}$ groups \tok{(\textasciitilde)} for $|s|=n$ (checked: $n=1,2,3,5\mapsto 2,4,8,32$).
+\end{example}
+
+\begin{example}[level 2: tetration]
+With fresh paste macros \tok{TCAT} (a level needs its own helpers, otherwise they are hidden while the lower level
+expands) and the passes \tok{TGEN\_EXP\_A/B} (emitting \tok{EXPONENTIAL DELAY\_OPEN\_BRACE\_1()}) and \tok{TCLOSE\_A/B}
+(emitting \tok{)}):
+\[
+\tok{TOWER(s)}=\tok{TCAT(TCAT(TGEN\_EXP\_A s, \_END)(\textasciitilde) TCLOSE\_A s, \_END)}
+\]
+yields $2\uparrow\uparrow n$ groups (checked: $n=1,2,3,4\mapsto 2,4,16,65536$).
+\end{example}
+
+\begin{theorem}[lower bound]\label{t:low}
+For every $N$ there is $\Gamma_N$ with $\Lambda=N$ whose output length on a sequence of length $n$ is at least row
+$N+2$ of the Ackermann hierarchy at $n$. Hence the output-length functions of preprocessing are cofinal in the primitive
+recursive functions, and Theorem~\ref{t:up} is tight up to the constants $c,d,p$.
+\end{theorem}
+\begin{proof}
+Iterate the step from \tok{EXPONENTIAL} to \tok{TOWER}: given $\Gamma_{N-1}$ computing $g$ at level $N-1$, add fresh
+copies of the pass and paste helpers and a pass emitting $\langle g\rangle$\tok{ DELAY\_OPEN\_BRACE\_1()} once per group
+together with a closing pass; the result is $g^{(n)}$ applied to a constant sequence, one row higher. Freshness of helpers
+is required by Lemma~\ref{l:inv}: helpers shared with an enclosing level carry its mark and are not eligible.
+\end{proof}
+
+
+\section{Preprocessing computes exactly the primitive recursive functions}
+Encode $n\in\mathbb N$ as the sequence $\overline n=\underbrace{(\textasciitilde)\cdots(\textasciitilde)}_{n}$; a tuple is a
+list of such arguments. A function $f:\mathbb N^k\to\mathbb N$ is \emph{pp-computable} if there is an environment $\Gamma$
+and a macro $F$ with $\Ex\big(F(\overline{x_1},\dots,\overline{x_k})\big)=\overline{f(\vec x)}$ for all $\vec x$.
+
+\begin{theorem}[$\subseteq$]\label{t:sub}
+Every pp-computable function is primitive recursive.
+\end{theorem}
+\begin{proof}
+Fix $\Gamma$ and $F$. A configuration (the token stream with hide sets) is encoded as a natural number; the one-step
+relation $\to$ is deterministic and, on codes, primitive recursive (it is a bounded search for the leftmost eligible head
+and a bounded rewrite). By Theorem~\ref{t:up} the computation on input of length $n$ halts within $T(n)=\Phi_\Lambda^{(p)}(cn+d)$
+steps, and every intermediate configuration has size $\le T(n)$; both bounds are primitive recursive. Hence
+$f(\vec x)=\mathrm{decode}\big(\mathrm{step}^{(T(n))}(\mathrm{encode}(F(\overline{\vec x})))\big)$ is obtained from
+primitive recursive ingredients by bounded iteration (iterate $\mathrm{step}$ exactly $T(n)$ times), so $f$ is primitive
+recursive.
+\end{proof}
+
+\begin{theorem}[$\supseteq$]\label{t:sup}
+Every primitive recursive function is pp-computable. Moreover a definition of recursion depth $r$ is realised with
+$\Lambda=r$.
+\end{theorem}
+\begin{proof}
+By structural induction on a primitive recursive term, giving a translation $\llbracket\cdot\rrbracket$ into macros.
+
+\emph{Base.} $\llbracket\mathbf 0\rrbracket(\,\overline{\vec x}\,)=\ $ (empty); $\llbracket\mathbf S\rrbracket(s)=s\,(\textasciitilde)$;
+$\llbracket\pi^k_i\rrbracket$ selects the $i$-th argument (one function-like macro). All are level $0$ and verified.
+
+\emph{Composition} $h=f\circ(g_1,\dots,g_m)$: $\llbracket h\rrbracket(\vec s)=\llbracket f\rrbracket\big(\llbracket
+g_1\rrbracket(\vec s),\dots,\llbracket g_m\rrbracket(\vec s)\big)$, the $g_j$ pre-expanded as arguments ($\Ex(A_i)$ in the
+rule). Each occurrence uses fresh copies of the helper macros of its subterms; by Lemma~\ref{l:inv} shared helpers would
+carry an enclosing mark and be ineligible, so freshness is necessary and sufficient. Level $=\max$ over subterms.
+
+\emph{Primitive recursion} $f(0,\vec y)=g(\vec y)$, $f(n{+}1,\vec y)=h(n,f(n,\vec y),\vec y)$: realise the iterator
+\[
+\mathrm{ITER}(\Theta)\big(\overline{\,n\,}\big)(\sigma)=\Theta^{(n)}(\sigma),
+\]
+as in \texttt{EXPONENTIAL}: two passes, $\texttt{GEN\_}\Theta\texttt{\_A/B}$ emitting
+``$\Theta\ \texttt{DELAY\_OPEN\_BRACE\_1()}$'' once per group of $\overline n$, and a closing pass
+(\texttt{GEN\_BRACE\_2\_A/B}) emitting the matching \tok{)}; the net term is $\Theta(\Theta(\cdots\Theta(\sigma)))$ with
+$n$ applications. Take $\sigma$ to be the state $(\,\overline{\text{counter}}\,,\ \overline{\text{value}}\,,\ \vec y\,)$ as a
+single parenthesised tuple (the inner commas are protected), with counter $=\overline 0$ and value $=\llbracket
+g\rrbracket(\vec y)$ initially, and
+\[
+\Theta(c,v,\vec y)=\big(\,\mathbf S(c),\ \llbracket h\rrbracket(c,v,\vec y),\ \vec y\,\big).
+\]
+Tuple projection and reassembly use \texttt{FIRST\_VALUE}/\texttt{SECOND\_VALUE} of \texttt{ppinf.h}. The final value
+field is read off by a projection. After $n$ iterations the value field is $f(n,\vec y)$ by induction on $n$. The pass adds
+one iteration level on top of $\llbracket h\rrbracket$, so $\Lambda$ increases by one exactly at a recursion, matching the
+depth bound and Theorem~\ref{t:up}.
+
+\emph{Verified instances.} $\mathbf{ADD}=\mathrm{ITER}(\mathbf S)$ threads the accumulator through $\mathbf S$:
+$\texttt{ADD}(\overline a,\overline b)=\overline{a+b}$ (checked $3{+}2,1{+}4,0{+}3,2{+}0\mapsto5,5,3,2$). At higher levels
+$\texttt{EXPONENTIAL}=\mathrm{ITER}(\lambda s.\,s\,s)$ gives $2^{n}$ (level $1$) and $\texttt{TOWER}=\mathrm{ITER}
+(\texttt{EXPONENTIAL})$ gives $2\uparrow\uparrow n$ (level $2$).
+\end{proof}
+
+\begin{corollary}
+The functions computed by the C preprocessor are \emph{exactly} the primitive recursive functions; a function of recursion
+depth $r$ is realised at level $r$, so the growth attainable at level $N$ is precisely row $N{+}2$ of the Ackermann
+hierarchy. No single $\Gamma$ computes a function that dominates all primitive recursive functions, because $\Lambda$ is
+fixed by the source and expansion creates no definitions: diagonalisation across levels within one run is impossible.
+\end{corollary}
+
+\begin{remark}
+Theorems~\ref{t:up} and~\ref{t:low} give: preprocessing computes only primitive recursive functions, and its growth
+reaches every row of the Ackermann hierarchy, but no single $\Gamma$ reaches all rows, since levels are fixed by the
+source. Diagonalisation over levels within one run is impossible.
+\end{remark}
+\end{document}
