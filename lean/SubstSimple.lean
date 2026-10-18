@@ -14,6 +14,29 @@ inductive All2 {α β : Type} (R : α → β → Prop) : List α → List β →
   | nil : All2 R [] []
   | cons {a b as bs} : R a b → All2 R as bs → All2 R (a :: as) (b :: bs)
 
+/-! `All2` splits along appends. -/
+
+theorem all2_append {α β : Type} {R : α → β → Prop} : ∀ {l1 l2 : List α} {outs : List β}, All2 R (l1 ++ l2) outs →
+    ∃ o1 o2, outs = o1 ++ o2 ∧ All2 R l1 o1 ∧ All2 R l2 o2
+  | [], _, outs, h => ⟨[], outs, rfl, .nil, h⟩
+  | a :: l1, l2, outs, h => by
+    cases h with
+    | cons hr hrest =>
+      obtain ⟨o1, o2, rfl, h1, h2⟩ := all2_append hrest
+      exact ⟨_ :: o1, o2, rfl, .cons hr h1, h2⟩
+
+theorem all2_length {α β : Type} {R : α → β → Prop} : ∀ {l : List α} {outs : List β}, All2 R l outs → outs.length = l.length
+  | [], [], .nil => rfl
+  | _ :: _, _ :: _, .cons _ h => by simp [all2_length h]
+
+theorem all2_flatten {α β : Type} {R : α → β → Prop} : ∀ {L : List (List α)} {outs : List β}, All2 R L.flatten outs →
+    ∃ chunks : List (List β), outs = chunks.flatten ∧ All2 (All2 R) L chunks
+  | [], outs, h => by cases h; exact ⟨[], rfl, .nil⟩
+  | l :: L, outs, h => by
+    obtain ⟨o1, o2, rfl, h1, h2⟩ := all2_append (by simpa using h)
+    obtain ⟨chunks, rfl, hc⟩ := all2_flatten h2
+    exact ⟨o1 :: chunks, rfl, .cons h1 hc⟩
+
 /-- Spelled `n̄`. -/
 def IsNum (xs : List Tok) (v : Nat) : Prop := xs.map (·.s) = unaryList v
 

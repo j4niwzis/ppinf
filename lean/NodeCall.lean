@@ -13,23 +13,23 @@ theorem toks_map_t (l : List Tok) (r : List RTok) : toks (l.map RTok.t ++ r) = l
 
 theorem toks_t (x : Tok) (r : List RTok) : toks (RTok.t x :: r) = x :: toks r := rfl
 
-theorem argShape_of_ok {Γ : Env} {as : List (List Tok)} {vs : List Nat} (h : ArgsOK Γ as vs) : ∀ A ∈ as, ArgShape A := by
-  intro A hA
-  obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hA
-  have := (h.2 i hi).1
-  simpa [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hi] using this
+theorem argShape_of_ok {Γ : Env} : ∀ {as : List (List Tok)} {vs : List Nat}, ArgsOK Γ as vs → ∀ A ∈ as, ArgShape A
+  | [], [], .nil, _, h => by simp at h
+  | _ :: _, _ :: _, .cons hA hrest, A, h => by
+    rcases List.mem_cons.mp h with rfl | h
+    · exact hA.1
+    · exact argShape_of_ok hrest A h
 
 theorem expands_nil (Γ : Env) : Expands Γ [] 0 := fun c => ⟨1, [], [], c, by simp [expand, scan, finalize], rfl⟩
 
-theorem expands_getD {Γ : Env} {as : List (List Tok)} {vs : List Nat} (h : ArgsOK Γ as vs) (j : Nat) :
-    Expands Γ (as.getD j []) (vs.getD j 0) := by
-  by_cases hj : j < as.length
-  · exact (h.2 j hj).2
-  · have h1 : as.getD j [] = [] := by
-      rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none_iff.mpr (by omega)]; rfl
-    have h2 : vs.getD j 0 = 0 := by
-      rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none_iff.mpr (by have := h.1; omega)]; rfl
-    rw [h1, h2]; exact expands_nil Γ
+theorem expands_getD {Γ : Env} : ∀ {as : List (List Tok)} {vs : List Nat}, ArgsOK Γ as vs → ∀ j,
+    Expands Γ (as.getD j []) (vs.getD j 0)
+  | [], [], .nil, j => by simpa using expands_nil Γ
+  | _ :: _, _ :: _, .cons hA _, 0 => by simpa using hA.2
+  | _ :: _, _ :: _, .cons _ hrest, j + 1 => by simpa using expands_getD hrest j
+
+theorem argsOK_length {Γ : Env} {as : List (List Tok)} {vs : List Nat} (h : ArgsOK Γ as vs) : as.length = vs.length :=
+  (all2_length h).symm
 
 theorem bind_plain {as : List (List Tok)} (sep : Tok) (hsep : sep.s = ",") (hs : ∀ A ∈ as, ArgShape A) (k : Nat)
     (hk : as.length = k) (hne : k ≠ 0 ∨ as = []) : bind k false (joinArgs sep as) = some (as, []) := by

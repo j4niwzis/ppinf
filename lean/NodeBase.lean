@@ -33,7 +33,7 @@ def callToks (x lp sep rp : Tok) (as : List (List Tok)) : List Tok := x :: lp ::
 
 /-- The arguments: shaped, and expanding to the values. -/
 def ArgsOK (Γ : Env) (as : List (List Tok)) (vs : List Nat) : Prop :=
-  as.length = vs.length ∧ ∀ i, i < as.length → ArgShape (as.getD i []) ∧ Expands Γ (as.getD i []) (vs.getD i 0)
+  All2 (fun A v => ArgShape A ∧ Expands Γ A v) as vs
 
 /-- **The node lemma**, for the node `π` with term `t`. -/
 def NodeOK (Γ : Env) (t : Term) (π : List Code) : Prop :=
