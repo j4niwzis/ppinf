@@ -103,20 +103,19 @@ theorem closeAt_args (sep rp : Tok) (hsep : sep.s = ",") (hrp : rp.s = ")") :
     rw [this]; simp
 
 theorem splitTop_args (sep : Tok) (hsep : sep.s = ",") :
-    ∀ (as : List (List Tok)) (cur : List Tok), as ≠ [] → (∀ A ∈ as, ArgShape A) →
-    splitTop 0 (joinArgs sep as) cur = (cur.reverse ++ as.head!) :: as.tail
-  | [], _, h, _ => absurd rfl h
-  | [A], cur, _, h => by
+    ∀ (A : List Tok) (as : List (List Tok)) (cur : List Tok), (∀ X ∈ A :: as, ArgShape X) →
+    splitTop 0 (joinArgs sep (A :: as)) cur = (cur.reverse ++ A) :: as
+  | A, [], cur, h => by
     have := splitTop_walk A [] cur 0 0 (h A (by simp))
     simp only [joinArgs, List.intercalate_singleton, List.append_nil] at this ⊢
-    rw [this]; simp [splitTop, List.head!]
-  | A :: B :: as, cur, _, h => by
+    rw [this]; simp [splitTop]
+  | A, B :: as, cur, h => by
     simp only [joinArgs, List.intercalate_cons_cons, List.append_assoc, List.cons_append, List.nil_append] at *
     rw [splitTop_walk A _ cur 0 0 (h A (by simp))]
     rw [splitTop_cons]
     simp only [hsep, beq_self_eq_true, Bool.and_self, ite_true]
-    have := splitTop_args sep hsep (B :: as) [] (by simp) (fun X hX => h X (by simp_all))
+    have := splitTop_args sep hsep B as [] (fun X hX => h X (by simp_all))
     simp only [joinArgs] at this
-    rw [this]; simp [List.head!]
+    rw [this]; simp
 
 end PP
