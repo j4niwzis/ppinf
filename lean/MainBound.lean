@@ -13,6 +13,16 @@ def PreB (Γ : Env) (ρ F : Nat) (A W : List Tok) : Prop :=
   ∀ n c q, pscan Γ W n c A = some q → pscan Γ W F c A = some q ∧ q.1.length ≤ F ∧ q.2.1.length ≤ F ∧
     ∃ T, q.2.2.2 = T ++ W ∧ T.length ≤ F ∧ Inv (T ++ W) ∧ ∀ t ∈ T, rank Γ t ≤ ρ
 
+/-- One result `q` of a prefix scan, within `F`. -/
+def PreBAt (Γ : Env) (ρ F : Nat) (W A : List Tok) (c : Nat) (q : PRes) : Prop :=
+  pscan Γ W F c A = some q ∧ q.1.length ≤ F ∧ q.2.1.length ≤ F ∧
+    ∃ T, q.2.2.2 = T ++ W ∧ T.length ≤ F ∧ Inv (T ++ W) ∧ ∀ t ∈ T, rank Γ t ≤ ρ
+
+theorem preBAt_mono {Γ : Env} {ρ F F' : Nat} {W A : List Tok} {c : Nat} {q : PRes} (h : PreBAt Γ ρ F W A c q) (hF : F ≤ F') :
+    PreBAt Γ ρ F' W A c q := by
+  obtain ⟨h1, h2, h3, T, h4, h5, h6, h7⟩ := h
+  exact ⟨pscan_mono Γ W F c A q h1 F' hF, by omega, by omega, T, h4, by omega, h6, h7⟩
+
 theorem preB_mono {Γ : Env} {ρ F F' : Nat} {A W : List Tok} (h : PreB Γ ρ F A W) (hF : F ≤ F') : PreB Γ ρ F' A W := by
   intro n c q e
   obtain ⟨h1, h2, h3, T, h4, h5, h6, h7⟩ := h n c q e
@@ -157,5 +167,114 @@ theorem fn_round (Γ : Env) (ρ w : Nat) (IH : GLAt Γ ρ w) (W : List Tok) (p k
   have := rebuild_fn Γ W (s + g nl) c x open_ cl (i1 ++ i2) rest hid hf hop hc named va r b q2 hbd ers hb cont
   have hfu : s + g nl + 1 ≤ K + 4 := by omega
   exact pscan_mono Γ W _ _ _ _ this _ hfu
+
+/-- The round's bound, as `G` spells it. -/
+def Kf (Γ : Env) (ρ w p : Nat) : Nat :=
+  let Lb := maxBody Γ
+  let g := G Lb (B Lb ρ) w
+  let s := g (p + w + 1) + 2
+  let nl := Lb * (s + p + w + 2)
+  Lb * s + s + nl + g nl
+
+theorem G_succ (Γ : Env) (ρ w a : Nat) :
+    G (maxBody Γ) (B (maxBody Γ) ρ) (w + 1) a = B (maxBody Γ) ρ a + 2 * Kf Γ ρ w (B (maxBody Γ) ρ a) + 10 := rfl
+
+/-- What `Kf` holds: the next steps' bounds. -/
+theorem Kf_facts (Γ : Env) (ρ w p : Nat) :
+    G (maxBody Γ) (B (maxBody Γ) ρ) w 0 + 2 ≤ Kf Γ ρ w p ∧
+    G (maxBody Γ) (B (maxBody Γ) ρ) w (maxBody Γ) + 2 + maxBody Γ ≤ Kf Γ ρ w p ∧ p + w + 2 ≤ Kf Γ ρ w p := by
+  have hLb := maxBody_pos Γ
+  have mono := G_mono (maxBody Γ) _ (B_mono (maxBody Γ) ρ) w
+  unfold Kf
+  simp only
+  generalize G (maxBody Γ) (B (maxBody Γ) ρ) w = g at mono ⊢
+  generalize maxBody Γ = Lb at hLb ⊢
+  have h1 : g 0 ≤ g (p + w + 1) := mono _ _ (by omega)
+  have hnl : Lb ≤ Lb * (g (p + w + 1) + 2 + p + w + 2) := Nat.le_mul_of_pos_right _ (by omega)
+  have hnl2 : g (p + w + 1) + 2 + p + w + 2 ≤ Lb * (g (p + w + 1) + 2 + p + w + 2) := Nat.le_mul_of_pos_left _ hLb
+  have h2 : g Lb ≤ g (Lb * (g (p + w + 1) + 2 + p + w + 2)) := mono _ _ hnl
+  have h3 : g 0 ≤ g (Lb * (g (p + w + 1) + 2 + p + w + 2)) := mono _ _ (by omega)
+  refine ⟨by omega, by omega, by omega⟩
+
+/-- `fn_round`, in `Kf`'s terms. -/
+theorem fn_round' (Γ : Env) (ρ w : Nat) (IH : GLAt Γ ρ w) (W : List Tok) (p k c : Nat) (x open_ cl : Tok)
+    (i1 i2 rest : List Tok) (hid : x.s ∉ x.H) {arity : Nat} {variadic : Bool} {body : List BTok}
+    (hf : Γ.find x.s = some (.fn arity variadic body)) (hop : open_.s = "(")
+    (hc : closeAt 0 ((i1 ++ i2) ++ cl :: rest) [] = some (i1 ++ i2, cl, rest)) named va r b q2
+    (hbd : bind arity variadic (i1 ++ i2) = some (named, va)) (hr : subst Γ k (c + 1) body named va = some r)
+    (hb : paste r.1 = some b) (hp : pscan Γ W k r.2.2 (mark c (x.s :: inter x.H cl.H) b ++ rest) = some q2)
+    (inv : Inv (x :: open_ :: ((i1 ++ i2) ++ cl :: rest) ++ W))
+    (ri1 : ∀ t ∈ i1, rank Γ t ≤ ρ) (ri2 : ∀ t ∈ i2, rank Γ t ≤ ρ + 1) (rcl : rank Γ cl ≤ ρ + 1)
+    (rrest : ∀ t ∈ rest, rank Γ t ≤ ρ + 1) (hi1 : i1.length ≤ p) (hi2 : i2.length ≤ w) (hrest : rest.length ≤ w) :
+    PreBAt Γ (ρ + 1) (Kf Γ ρ w p + 4) W (x :: open_ :: ((i1 ++ i2) ++ cl :: rest)) c
+      (q2.1, r.2.1 ++ fnStep x cl c :: q2.2.1, q2.2.2) :=
+  fn_round Γ ρ w IH W p k c x open_ cl i1 i2 rest hid hf hop hc named va r b q2 hbd hr hb hp inv ri1 ri2 rcl rrest hi1 hi2 hrest
+
+theorem preBAt_nil (Γ : Env) (ρ F : Nat) (hF : 1 ≤ F) (W : List Tok) (c : Nat) (i : Inv W) :
+    PreBAt Γ ρ F W [] c ([], [], c, W) := by
+  obtain ⟨F, rfl⟩ : ∃ G, F = G + 1 := ⟨F - 1, by omega⟩
+  exact ⟨by simp [pscan], by simp, by simp, [], by simp, by simp, by simpa using i, by simp⟩
+
+/-- A round with nothing below the top rank: at most `w + 1` tokens. -/
+theorem lower_empty (Γ : Env) (ρ w : Nat) (IH : GLAt Γ ρ w) (p : Nat) :
+    ∀ A2 W n c q, Inv (A2 ++ W) → (∀ t ∈ A2, rank Γ t ≤ ρ + 1) → A2.length ≤ w + 1 →
+      pscan Γ W n c A2 = some q → PreBAt Γ (ρ + 1) (Kf Γ ρ w p + 5) W A2 c q := by
+  intro A2 W n c q i hr hl e
+  have ⟨kf1, kf2, kf3⟩ := Kf_facts Γ ρ w p
+  have hLb := maxBody_pos Γ
+  cases A2 with
+  | nil =>
+    cases n with
+    | zero => simp [pscan] at e
+    | succ n => simp [pscan] at e; subst e; exact preBAt_nil Γ _ _ (by omega) W c (by simpa using i)
+  | cons y R =>
+    cases n with
+    | zero => simp [pscan] at e
+    | succ k =>
+      have hry : rank Γ y ≤ ρ + 1 := hr y (by simp)
+      have hrR : ∀ t ∈ R, rank Γ t ≤ ρ + 1 := fun t ht => hr t (List.mem_cons_of_mem _ ht)
+      rcases iter_cases Γ W k c y R q e with ⟨hp, q2, h2, rfl⟩ | ⟨body, r, b, q2, hid, hf, hrs, hb, h2, rfl⟩ |
+          ⟨arity, variadic, body, open_, inner, cl, rest, named, va, r, b, q2, hid, hf, hR, hop, hc, hbd, hrs, hb, h2, rfl⟩ |
+          ⟨hs, rfl⟩
+      · -- passed by
+        have pre := IH 0 [] R W (by simpa using inv_tail (x := y) (by simpa using i)) (by simp) hrR (by simp)
+          (by simp at hl; omega)
+        obtain ⟨c1, c2, c3, T, c4, c5, c6, c7⟩ := pre k c q2 (by simpa using h2)
+        refine ⟨?_, by simp; omega, by simp; omega, T, c4, by omega, c6, c7⟩
+        have := rebuild_pass Γ W _ c y R hp q2 (by simpa using c1)
+        exact pscan_mono Γ W _ _ _ _ this _ (by omega)
+      · -- an object macro
+        have ⟨invN, rkN⟩ := obj_next Γ (rest := R ++ W) (by simpa using i) hid hf c b
+        have hbody : body.length ≤ maxBody Γ := by have := body_le Γ hf; simpa [bodyLen] using this
+        have g2 := G_ge (maxBody Γ) (B (maxBody Γ) ρ) w (maxBody Γ)
+        have ⟨lr, sr, er⟩ := subst_bound Γ k body [] [] 0 0 (G (maxBody Γ) (B (maxBody Γ) ρ) w (maxBody Γ)) (by omega)
+          (fun a ha => by simp at ha; subst ha; simp)
+          (fun a ha c0 q he => by
+            simp at ha; subst ha
+            have := expand_nil_eq Γ k c0 q he; subst this
+            exact ⟨by simp, by simp, expand_nil Γ _ c0 (by omega)⟩)
+          body 0 (c + 1) r.1 r.2.1 r.2.2 (by unfold subst at hrs; exact hrs)
+        have hblen : b.length ≤ maxBody Γ := by have := paste_len _ _ hb; simp at lr; omega
+        have pre := IH (maxBody Γ) (mark c (y.s :: y.H) b) R W (by simpa using invN)
+          (fun t ht => by rw [rank_mark Γ _ _ _ t ht]; omega) hrR (by rw [mark_len]; exact hblen) (by simp at hl; omega)
+        obtain ⟨c1, c2, c3, T, c4, c5, c6, c7⟩ := pre k r.2.2 q2 h2
+        have sr0 : r.2.1.length = 0 := by rw [Nat.mul_zero] at sr; omega
+        refine ⟨?_, by simp; omega, by simp; omega, T, c4, by omega, c6, c7⟩
+        have := rebuild_obj Γ W _ c y R hid hf r b q2 (by unfold subst; exact er) hb c1
+        exact pscan_mono Γ W _ _ _ _ this _ (by omega)
+      · -- a function-like macro
+        subst hR
+        have hlen : inner.length + rest.length + 2 ≤ w := by simp at hl; omega
+        have hc' : closeAt 0 (([] ++ inner) ++ cl :: rest) [] = some ([] ++ inner, cl, rest) := by simpa using hc
+        have hbd' : bind arity variadic ([] ++ inner) = some (named, va) := by simpa using hbd
+        have h := fn_round' Γ ρ w IH W p k c y open_ cl [] inner rest hid hf hop hc' named va r b q2 hbd' hrs hb h2
+          (by simpa using i) (by simp) (fun t ht => hr t (by simp [ht])) (hr cl (by simp))
+          (fun t ht => hr t (by simp [ht])) (by simp) (by omega) (by omega)
+        have := preBAt_mono h (show Kf Γ ρ w p + 4 ≤ Kf Γ ρ w p + 5 by omega)
+        simpa using this
+      · -- a stop
+        refine ⟨?_, by simp, by simp, y :: R, by simp, by simp at hl ⊢; omega, i, hr⟩
+        have := rebuild_stop Γ W 0 c y R hs
+        exact pscan_mono Γ W _ _ _ _ this _ (by omega)
 
 end PP
