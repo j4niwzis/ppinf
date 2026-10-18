@@ -16,7 +16,7 @@ abbrev NumArg (vs : List Nat) (j : Nat) (o : List Tok) : Prop := IsNum o (vs.get
 /-- The inner calls `gⱼ(ā)` of a composition, marked: arguments of `h`, with the values `gⱼ(v̄)`. -/
 theorem comp_args (Γ : Env) (hp : PunctFree Γ) (π : List Code) (k : Nat) (gs : List Term) (vs : List Nat)
     (hvs : vs.length = k) (c : Nat) (K : List Name)
-    (hK1 : ∀ j, fullName (π ++ [.k j]) .self ∉ K) (hK2 : ∀ j, ∀ n ∈ K, ¬ Below (π ++ [.k j]) n)
+    (hK1 : ∀ j, fullName (π ++ [.k j]) .self ∉ K) (hK2 : ∀ j, ∀ n ∈ K, Safe (π ++ [.k j]) n)
     (IHg : ∀ j g, gs[j]? = some g → NodeOK Γ g (π ++ [.k j])) (hga : ∀ g ∈ gs, g.arity = k) :
     ∀ (L : List (Term × Nat)) (chunks : List (List (List Tok))), (∀ p ∈ L, gs[p.2]? = some p.1) →
       All2 (All2 (NumArg vs)) (L.map fun _ => List.range k) chunks →

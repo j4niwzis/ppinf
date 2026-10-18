@@ -114,19 +114,19 @@ theorem not_below_parent (π : List Code) (c : Code) (x : Helper) : ¬ Below (π
 
 /-- The context of a child: the parent's mark hides neither the child nor anything below it. -/
 theorem child_ctx {π : List Code} (c : Code) {x rp : Tok} (hx : x.s = fullName π .self)
-    (hdis : ∀ n ∈ inter x.H rp.H, ¬ Below π n) : ∀ n ∈ x.s :: inter x.H rp.H, ¬ Below (π ++ [c]) n := by
+    (hdis : ∀ n ∈ inter x.H rp.H, Safe π n) : ∀ n ∈ x.s :: inter x.H rp.H, Safe (π ++ [c]) n := by
   intro n hn
   rcases List.mem_cons.mp hn with rfl | hn
-  · rw [hx]; exact not_below_parent π c .self
-  · exact fun hb => hdis n hn (below_mono hb)
+  · rw [hx]; exact ⟨not_below_parent π c .self, π, .self, rfl⟩
+  · exact ⟨fun hb => (hdis n hn).1 (below_mono hb), (hdis n hn).2⟩
 
 theorem child_free {π : List Code} (c : Code) {x rp : Tok} (hx : x.s = fullName π .self)
-    (hdis : ∀ n ∈ inter x.H rp.H, ¬ Below π n) : fullName (π ++ [c]) .self ∉ x.s :: inter x.H rp.H := by
+    (hdis : ∀ n ∈ inter x.H rp.H, Safe π n) : fullName (π ++ [c]) .self ∉ x.s :: inter x.H rp.H := by
   intro h
   rcases List.mem_cons.mp h with h | h
   · rw [hx] at h
     have := (fullName_inj h).1; have := congrArg List.length this; simp at this
-  · exact hdis _ h (below_child π c)
+  · exact (hdis _ h).1 (below_child π c)
 
 /-! Plain bodies. -/
 

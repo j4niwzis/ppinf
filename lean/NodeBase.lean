@@ -28,6 +28,12 @@ def PunctFree (Γ : Env) : Prop :=
 /-- A name of the node `π` or below it. -/
 def Below (π : List Code) (n : Name) : Prop := ∃ q x, n = fullName (π ++ q) x
 
+/-- A macro name of the translation. -/
+def IsName (n : Name) : Prop := ∃ π y, n = fullName π y
+
+/-- A hidden name a node `π` may meet in its call: a name, not its own nor below it. -/
+def Safe (π : List Code) (n : Name) : Prop := ¬ Below π n ∧ IsName n
+
 /-- The call `p ( A₁ , … , Aₖ )`. -/
 def callToks (x lp sep rp : Tok) (as : List (List Tok)) : List Tok := x :: lp :: (joinArgs sep as ++ [rp])
 
@@ -39,7 +45,7 @@ def ArgsOK (Γ : Env) (as : List (List Tok)) (vs : List Nat) : Prop :=
 def NodeOK (Γ : Env) (t : Term) (π : List Code) : Prop :=
   ∀ (x lp sep rp : Tok) (as : List (List Tok)) (vs : List Nat),
     x.s = fullName π .self → x.s ∉ x.H → lp.s = "(" → sep.s = "," → rp.s = ")" →
-    as.length = t.arity → ArgsOK Γ as vs → (∀ n ∈ inter x.H rp.H, ¬ Below π n) →
+    as.length = t.arity → ArgsOK Γ as vs → (∀ n ∈ inter x.H rp.H, Safe π n) →
     ∀ c, ∃ N o st c', scan Γ N c (callToks x lp sep rp as) = some (o, st, c') ∧ IsNum o (t.eval vs)
 
 /-! Numerals. -/
