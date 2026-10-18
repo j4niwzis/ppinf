@@ -14,4 +14,4 @@ rev = "v4.35.0"
 
 [[lean_lib]]
 name = "PpinfPR"
-roots = ["PrimEnc", "PrimBasic", "PrimScan", "PrimPaste", "PrimStep", "Thm9"]
+roots = ["PrimEnc", "PrimBasic", "PrimScan", "PrimPaste", "PrimStep", "Thm9", "Thm10"]
