@@ -76,6 +76,10 @@ def pasteTwo : RTok → RTok → Option RTok
   | .t a, .t b => (pasted a.s b.s).map fun s => .t { s, H := inter a.H b.H }
   | _, _ => none
 
+def tokOf : RTok → Option Tok
+  | .t x => some x
+  | _ => none
+
 /-- P: the `##` operators, left to right, then the placemarkers erased. -/
 def paste (xs : List RTok) : Option (List Tok) :=
   let rec go : List RTok → List RTok → Option (List RTok)
@@ -83,7 +87,7 @@ def paste (xs : List RTok) : Option (List Tok) :=
     | a :: acc, .op :: b :: rest => do let c ← pasteTwo a b; go (c :: acc) rest
     | _, .op :: _ => none
     | acc, x :: rest => go (x :: acc) rest
-  (go [] xs).map fun ys => ys.filterMap fun | .t x => some x | _ => none
+  (go [] xs).map fun ys => ys.filterMap tokOf
 
 /-- M_K, by step `e`: every token of its replacement gets `K` and the origin `e`. -/
 def mark (e : Nat) (K : List Name) (xs : List Tok) : List Tok :=
