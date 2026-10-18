@@ -1,6 +1,7 @@
 import Mathlib.Computability.Primrec.List
 import MainBound
-import Translate
+import Input
+import PrimEnc
 
 /-!
   Theorem 9 (pp_primrec.tex, §5): every pp-computable function is primitive recursive, against
@@ -8,12 +9,6 @@ import Translate
 -/
 
 namespace PP
-
-/-- The call `F(x̄₁, …, x̄ₖ)`, each argument in unary: `(~)` repeated. -/
-def call (F : String) (xs : List Nat) : String := s!"{F}({commaJoin (xs.map unary)})"
-
-/-- The token spellings of `n̄`. -/
-def unaryToks (n : Nat) : List String := (input (unary n)).map (·.s)
 
 /-- `f : ℕᵏ → ℕ` is pp-computable: some environment `Γ` and macro `F` expand
     `F(x̄₁, …, x̄ₖ)` to exactly `f(x̄)` in unary, for every input. -/

@@ -3,7 +3,7 @@ defaultTargets = ["Ppinf"]
 
 [[lean_lib]]
 name = "Ppinf"
-roots = ["Phi", "Marks", "Semantics", "ArgsFacts", "Read", "Check", "Origins", "Ids", "Consistent", "Lemma5", "Desc", "Mono", "Prefix", "Prefix2", "Prefix3", "Rank", "Size", "Steps", "Bound", "MainBound", "Translate", "Frame", "Exec", "Machine", "Agree"]
+roots = ["Phi", "Marks", "Semantics", "ArgsFacts", "Read", "Check", "Origins", "Ids", "Consistent", "Lemma5", "Desc", "Mono", "Prefix", "Prefix2", "Prefix3", "Rank", "Size", "Steps", "Bound", "MainBound", "Translate", "Frame", "Exec", "Machine", "Agree", "Input"]
 
 # Theorem 9 (pp-computable => primitive recursive) is stated against Mathlib's `Nat.Primrec`.
 [[require]]
@@ -14,4 +14,4 @@ rev = "v4.35.0"
 
 [[lean_lib]]
 name = "PpinfPR"
-roots = ["Thm9"]
+roots = ["PrimEnc", "Thm9"]

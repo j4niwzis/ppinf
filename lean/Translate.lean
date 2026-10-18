@@ -74,7 +74,9 @@ def Term.defs : Term → String → List String
 
 def Term.env (t : Term) : Env := defines ("\n".intercalate (t.defs "T"))
 
-def unary (n : Nat) : String := String.join (List.replicate n "(~)")
+/-- `n̄`: `(~)` repeated `n` times. -/
+def unaryChars (n : Nat) : List Char := (List.replicate n ['(', '~', ')']).flatten
+def unary (n : Nat) : String := String.ofList (unaryChars n)
 def callOf (t : Term) (xs : List Nat) : String := s!"T({commaJoin (xs.map unary)})"
 def runTerm (t : Term) (fuel : Nat) (xs : List Nat) : Option Nat := (run t.env fuel (callOf t xs)).map groups
 
