@@ -145,4 +145,78 @@ theorem cat_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} (
     rw [this]; exact e1')
   exact ⟨max N M + 1, o, st', c', hfin', ho⟩
 
+def iterBody (π : List Code) : List BTok :=
+  [nm π .CAT, tk "(", nm π .GEN, tk "(", prm 0, tk ")", prm 1, nm π .BRA, prm 0, tk ",", tk "_END", tk ")"]
+
+theorem toks_iter (π : List Code) (o1 oS o2 : List Tok) :
+    toks (plainOut (iterBody π) [o1, oS, o2]) =
+      callToks { s := fullName π .CAT } { s := "(" } comma { s := ")" }
+        [callToks { s := fullName π .GEN } { s := "(" } comma { s := ")" } [o1] ++ (oS ++ { s := fullName π .BRA } :: o2),
+         [{ s := "_END" }]] := by
+  simp only [iterBody, nm, tk, prm, plainOut, toks_t]
+  rw [toks_map_t, toks_t, toks_map_t, toks_t, toks_map_t]
+  simp [toks, tokOf, callToks, joinArgs, comma]
+
+/-- **`ITER ( n̄ , B )`**, `B` expanding to the base tuple. -/
+theorem iter_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} (hR : Realizes Γ (.prec f g) π)
+    (hga : g.arity = f.arity + 2) (IHg : NodeOK Γ g (π ++ [.r])) {L : List Helper}
+    (hL : ∀ y ∈ L, y = .self ∨ y = .SEL) {x lp sep rp : Tok} {A B : List Tok} {n v0 : Nat} {ys : List Nat} (hys : ys.length = f.arity)
+    (hx : x.s = fullName π .ITER) (hxH : In π L x.H) (hlp : lp.s = "(") (hsep : sep.s = ",") (hrp : rp.s = ")")
+    (hrpH : In π L rp.H) (hA : ArgShape A) (hAe : ExpandsP Γ A (fun o => IsNum o n)) (hB : ArgShape B)
+    (hBe : ExpandsP Γ B (IsTuple 0 v0 ys)) (c : Nat) :
+    ∃ M o st c', scan Γ M c (callToks x lp sep rp [A, B]) = some (o, st, c') ∧ IsTuple n (recV g ys v0 n) ys o := by
+  have hLI : Outer (.ITER :: L) := by
+    intro y hy; simp at hy; rcases hy with rfl | hy
+    · exact Or.inr (Or.inr rfl)
+    · rcases hL y hy with h | h
+      · exact Or.inl h
+      · exact Or.inr (Or.inl h)
+  let Ps : Nat → List Tok → Prop := fun j E => if j = 0 then IsNum E n else if j = 1 then IsTuple 0 v0 ys E else True
+  have hargs : ∀ j, ExpandsP Γ ([A, B].getD j []) (Ps j) := by
+    intro j c0
+    match j with
+    | 0 => obtain ⟨N, o, st, c', e, ho⟩ := hAe c0; exact ⟨N, o, st, c', e, by simpa [Ps] using ho⟩
+    | 1 => obtain ⟨N, o, st, c', e, ho⟩ := hBe c0; exact ⟨N, o, st, c', e, by simpa [Ps] using ho⟩
+    | j + 2 => exact ⟨1, [], [], c0, by simp [expand, scan, finalize], by simp [Ps]⟩
+  have hf : Γ.find x.s = some (.fn 2 false (iterBody π)) := by rw [hx]; exact find_prec hR .ITER
+  have hplain : Plain (iterBody π) := by
+    intro b hb; simp [iterBody, nm, tk, prm] at hb
+    rcases hb with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp
+  have nITER : Helper.ITER ∉ L := by intro h; rcases hL _ h with e | e <;> cases e
+  obtain ⟨N, outs, c1, hos, hcall⟩ := call_plainP Γ hf (by rw [hx]; exact not_mem_of_in hxH nITER)
+    hlp hsep hrp rfl (Or.inl (by decide)) (by intro X hX; simp at hX; rcases hX with rfl | rfl <;> assumption)
+    Ps hargs hplain c
+  have hpi : paramIdx (iterBody π) = [0, 1, 0] := by simp [iterBody, nm, tk, prm, paramIdx]
+  rw [hpi] at hos
+  obtain ⟨o1, oS, o2, rfl, ⟨h1, f1⟩, ⟨hS, _⟩, ⟨h2, f2⟩⟩ : ∃ a b d, outs = [a, b, d] ∧ (Ps 0 a ∧ Fin a) ∧
+      (Ps 1 b ∧ Fin b) ∧ (Ps 0 d ∧ Fin d) := by
+    cases hos with
+    | cons ha r1 => cases r1 with
+      | cons hb r2 => cases r2 with
+        | cons hd r3 => cases r3; exact ⟨_, _, _, rfl, ha, hb, hd⟩
+  simp only [Ps, ite_true, Nat.one_ne_zero, ite_false] at h1 hS h2
+  let K := x.s :: inter x.H rp.H
+  have hK : In π (.ITER :: L) K := by show In π (.ITER :: L) (x.s :: inter x.H rp.H); rw [hx]; exact in_mark hxH _ _
+  let mk := markOne c K
+  have hin : ∀ t : Tok, t.H = [] → In π (.ITER :: L) (mk t).H := fun t ht => in_markOne hK (in_of_nil ht) c
+  obtain ⟨M, o, st, c', e1, ho⟩ := cat_stage Γ hp hR hga IHg hLI (x := mk { s := fullName π .CAT })
+    (lp := mk { s := "(" }) (sep := mk comma) (rp := mk { s := ")" }) (gen := mk { s := fullName π .GEN })
+    (lp2 := mk { s := "(" }) (sep2 := mk comma) (rp2 := mk { s := ")" }) (bra := mk { s := fullName π .BRA })
+    (e := mk { s := "_END" }) (N1 := o1.map mk) (S := oS.map mk) (N2 := o2.map mk) hys
+    rfl (hin _ rfl) rfl rfl rfl (hin _ rfl) rfl (hin _ rfl) rfl rfl rfl (hin _ rfl) (isNum_markAll h1 c K)
+    (isTuple_map hS mk (fun t => rfl)) rfl (hin _ rfl) (isNum_markAll h2 c K)
+    (by
+      intro t ht; obtain ⟨t0, ht0, rfl⟩ := List.mem_map.mp ht
+      exact inJ_marked hK (f2 t0 ht0) (num_not_name h2 t0 ht0) c)
+    rfl (hin _ rfl) c1
+  have e1' := scanMono Γ M c1 _ _ e1 (max N M) (Nat.le_max_right _ _)
+  obtain ⟨st', hfin'⟩ := hcall (max N M) (Nat.le_max_left _ _) (o, st, c') (by
+    have hl : mark c K (toks (plainOut (iterBody π) [o1, oS, o2])) =
+        callToks (mk { s := fullName π .CAT }) (mk { s := "(" }) (mk comma) (mk { s := ")" })
+          [callToks (mk { s := fullName π .GEN }) (mk { s := "(" }) (mk comma) (mk { s := ")" }) [o1.map mk] ++
+            (oS.map mk ++ mk { s := fullName π .BRA } :: o2.map mk), [mk { s := "_END" }]] := by
+      rw [toks_iter, mark_eq]; simp [callToks, joinArgs, mk]
+    rw [hl]; exact e1')
+  exact ⟨max N M + 1, o, st', c', hfin', ho⟩
+
 end PP
