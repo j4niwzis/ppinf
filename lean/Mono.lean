@@ -112,3 +112,9 @@ theorem scanMono (Γ : Env) : ∀ n, ScanMono Γ n := by
                 | some q => rw [ih _ _ q hs m hm']; rw [hs] at e; exact e
 
 end PP
+
+namespace PP
+theorem subst_mono (Γ : Env) {n c body named va p} (e : subst Γ n c body named va = some p) (m : Nat) (hm : n ≤ m) :
+    subst Γ m c body named va = some p := by
+  unfold subst at e ⊢; exact substMono_of_scan (scanMono Γ n) _ _ _ _ _ _ _ e m hm
+end PP
