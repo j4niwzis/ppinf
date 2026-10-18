@@ -66,4 +66,117 @@ theorem cat2u_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code}
     have m4 : q0.2.2.2 ∈ quadToks Q := List.mem_flatMap.mpr ⟨q0, hq0, by simp⟩
     exact ⟨h1, h2, h3, h4, hin _ m1, hin _ m2, hin _ m4⟩
 
+/-- The ping-pong output, finalized. -/
+def PPOut (π : List Code) (n : Nat) (E : List Tok) : Prop :=
+  E.map (·.s) = (List.replicate n [fullName π .TH, fullName π .D0, "(", ")"]).flatten ++
+    [if n % 2 = 0 then fullName π .GA else fullName π .GB] ∧ ∀ t ∈ E, t.H = []
+
+theorem toks_cat2 (π : List Code) (E1 E2 : List Tok) :
+    toks (plainOut [nm π .CAT2u, tk "(", prm 0, tk ",", prm 1, tk ")"] [E1, E2]) =
+      callToks { s := fullName π .CAT2u } { s := "(" } comma { s := ")" } [E1, E2] := by
+  simp only [nm, tk, prm, plainOut, toks_t]
+  rw [toks_map_t, toks_t, toks_map_t, toks_t]
+  simp [toks, callToks, joinArgs, comma]
+
+/-- `CAT2 ( GA n̄ , _END )` → `(TH ( )ⁿ`. -/
+theorem cat2_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code} (hR : Realizes Γ (.prec f g) π)
+    {L : List Helper} (hL : ∀ y ∈ L, y ≠ .CAT2 ∧ y ≠ .CAT2u ∧ y ≠ .GA ∧ y ≠ .GB ∧ y ≠ .TH ∧ y ≠ .D1 ∧ y ≠ .D0 ∧
+      y ≠ .OUT ∧ y ≠ .GAEND ∧ y ≠ .GBEND)
+    {x lp sep rp ga e : Tok} {Nm : List Tok} {n : Nat} (hx : x.s = fullName π .CAT2) (hxH : In π L x.H)
+    (hlp : lp.s = "(") (hsep : sep.s = ",") (hrp : rp.s = ")") (hrpH : In π L rp.H)
+    (hga : ga.s = fullName π .GA) (hgaH : In π L ga.H) (hN : IsNum Nm n) (hNH : ∀ t ∈ Nm, InJ π L t.H)
+    (he : e.s = "_END") (heH : In π L e.H) (c : Nat) :
+    ∃ M o st c', scan Γ M c (callToks x lp sep rp [ga :: Nm, [e]]) = some (o, st, c') ∧
+      o.map (·.s) = (List.replicate n [fullName π .TH, "("]).flatten ∧ ∀ t ∈ o, t.s ∉ t.H := by
+  let Ps : Nat → List Tok → Prop := fun j E => if j = 0 then PPOut π n E else if j = 1 then
+    (E.map (·.s) = ["_END"] ∧ ∀ t ∈ E, t.H = []) else True
+  have nCAT2 : Helper.CAT2 ∉ L := fun h => (hL _ h).1 rfl
+  have nCAT2u : Helper.CAT2u ∉ L := fun h => (hL _ h).2.1 rfl
+  have nGA : Helper.GA ∉ L := fun h => (hL _ h).2.2.1 rfl
+  have nGB : Helper.GB ∉ L := fun h => (hL _ h).2.2.2.1 rfl
+  have hdist : ∀ y ∈ [(ppNames hR).th, (ppNames hR).d1, (ppNames hR).d0, (ppNames hR).out, "(", ")"],
+      y ≠ fullName π .GA ∧ y ≠ fullName π .GB := by
+    intro y hy
+    simp only [ppNames, List.mem_cons, List.mem_nil_iff, or_false] at hy
+    rcases hy with rfl | rfl | rfl | rfl | rfl | rfl
+    · exact ⟨fullName_ne_helper (by decide), fullName_ne_helper (by decide)⟩
+    · exact ⟨fullName_ne_helper (by decide), fullName_ne_helper (by decide)⟩
+    · exact ⟨fullName_ne_helper (by decide), fullName_ne_helper (by decide)⟩
+    · exact ⟨fullName_ne_helper (by decide), fullName_ne_helper (by decide)⟩
+    · exact ⟨(fullName_ne_lp _ _).symm, (fullName_ne_lp _ _).symm⟩
+    · exact ⟨(fullName_ne_rp _ _).symm, (fullName_ne_rp _ _).symm⟩
+  have hargs : ∀ j, ExpandsP Γ ([ga :: Nm, [e]].getD j []) (Ps j) := by
+    intro j c0
+    match j with
+    | 0 =>
+      obtain ⟨G, hG, hGl, hGg⟩ := num_groups n Nm hN
+      obtain ⟨Nf, o, st, c', e1, ho, hfin⟩ := pingpong Γ hp (ppNames hR) G (fullName π .GA) (fullName π .GB) ga c0
+        (fun gr hgr => ⟨hGg gr hgr,
+          not_mem_of_inJ (hNH gr.2.2 (by rw [hG]; exact List.mem_flatMap.mpr ⟨gr, hgr, by simp⟩)) nGA,
+          not_mem_of_inJ (hNH gr.2.2 (by rw [hG]; exact List.mem_flatMap.mpr ⟨gr, hgr, by simp⟩)) nGB⟩)
+        (find_prec hR .GA) (find_prec hR .GB) hdist (fullName_ne_helper (by decide)) hga
+        (ppInv_of_in hR (fun y hy => let h := hL y hy; ⟨h.2.2.1, h.2.2.2.1, h.2.2.2.2.1, h.2.2.2.2.2.1, h.2.2.2.2.2.2.1,
+          h.2.2.2.2.2.2.2.1⟩) hgaH .GA .GB (Or.inl rfl) (Or.inr rfl))
+      refine ⟨Nf, finalize o, st, c', by simp [expand, hG, e1], ?_⟩
+      simp only [Ps, ite_true]
+      refine ⟨by rw [← hGl]; simpa [finalize, Function.comp_def, ppNames] using ho, finalize_H hfin⟩
+    | 1 =>
+      have hfree : NameFree Γ [e] := by intro t ht; simp at ht; subst ht; rw [he]; exact hp.2.2.2.2
+      refine ⟨[e].length + 1, finalize [e], [], c0, by unfold expand; rw [show [ga :: Nm, [e]].getD 1 [] = [e] from rfl, scan_nameFree' hfree c0]; rfl, ?_⟩
+      have hn : e.s ∉ e.H := by rw [he]; exact name_ne_of_in heH (fun π' y => fullName_ne_end π' y)
+      simp only [Ps]
+      refine ⟨by simp [finalize, he], fun t ht => ?_⟩
+      simp [finalize] at ht; subst ht; simp [hn]
+    | j + 2 =>
+      refine ⟨1, [], [], c0, by simp [expand, scan, finalize], ?_⟩
+      simp [Ps]
+  have hs : ∀ A ∈ [ga :: Nm, [e]], ArgShape A := by
+    intro A hA; simp at hA
+    rcases hA with rfl | rfl
+    · unfold ArgShape walk
+      have h1 : (ga.s == ")") = false := by rw [hga]; simpa using fullName_ne_rp π .GA
+      have h2 : (ga.s == "(") = false := by rw [hga]; simpa using fullName_ne_lp π .GA
+      have h3 : (ga.s == ",") = false := by rw [hga]; simpa using fullName_ne_comma π .GA
+      simp only [h1, h2, h3, Bool.false_eq_true, ite_false, Bool.false_and]
+      exact walk_num hN 0
+    · unfold ArgShape; rw [walk_spell]; simp [walkS, he]
+  have hf : Γ.find x.s = some (.fn 2 false [nm π .CAT2u, tk "(", prm 0, tk ",", prm 1, tk ")"]) := by
+    rw [hx]; exact find_prec hR .CAT2
+  have hplain : Plain [nm π .CAT2u, tk "(", prm 0, tk ",", prm 1, tk ")"] := by
+    intro b hb; simp [nm, tk, prm] at hb; rcases hb with rfl | rfl | rfl | rfl | rfl | rfl <;> simp
+  obtain ⟨N, outs, c1, hos, hcall⟩ := call_plainP Γ hf (by rw [hx]; exact not_mem_of_in hxH nCAT2) hlp hsep hrp rfl
+    (Or.inl (by decide)) hs Ps hargs hplain c
+  have hpi : paramIdx [nm π .CAT2u, tk "(", prm 0, tk ",", prm 1, tk ")"] = [0, 1] := by simp [nm, tk, prm, paramIdx]
+  rw [hpi] at hos
+  obtain ⟨E1, E2, rfl, ⟨hP1, _⟩, ⟨hP2, _⟩⟩ : ∃ E1 E2, outs = [E1, E2] ∧ (Ps 0 E1 ∧ Fin E1) ∧ (Ps 1 E2 ∧ Fin E2) := by
+    cases hos with
+    | cons h1 hr => cases hr with
+      | cons h2 hr' => cases hr'; exact ⟨_, _, rfl, h1, h2⟩
+  simp only [Ps, ite_true, Nat.one_ne_zero, ite_false] at hP1 hP2
+  obtain ⟨e2, rfl, he2⟩ : ∃ e2, E2 = [e2] ∧ e2.s = "_END" := by
+    match E2, hP2.1 with
+    | [e2], h => exact ⟨e2, rfl, by simpa using h⟩
+    | [], h => simp at h
+    | _ :: _ :: _, h => simp at h
+  let K := x.s :: inter x.H rp.H
+  have hK : In π (.CAT2 :: L) K := by show In π (.CAT2 :: L) (x.s :: inter x.H rp.H); rw [hx]; exact in_mark hxH _ _
+  have hbody : ∀ s, In π (.CAT2 :: L) (markOne c K { s }).H := fun s => in_markOne hK (in_nil _ _) c
+  obtain ⟨M, o, st, c', e1, ho, hfin⟩ := cat2u_stage Γ hp hR (L := .CAT2 :: L)
+    (by
+      intro y hy; simp at hy
+      rcases hy with rfl | hy
+      · decide
+      · have h := hL y hy; exact ⟨h.2.1, h.2.2.2.2.1, h.2.2.2.2.2.2.1, h.2.2.2.2.2.2.2.2.1, h.2.2.2.2.2.2.2.2.2⟩)
+    (x := markOne c K { s := fullName π .CAT2u }) (lp := markOne c K { s := "(" }) (sep := markOne c K comma)
+    (rp := markOne c K { s := ")" }) (e := markOne c K e2) (E1 := E1.map (markOne c K)) (n := n)
+    rfl (hbody _) rfl rfl rfl (hbody _) (by simpa [Function.comp_def, markOne_s] using hP1.1)
+    (by
+      intro t ht; obtain ⟨t0, ht0, rfl⟩ := List.mem_map.mp ht
+      exact in_markOne hK (in_of_nil (hP1.2 t0 ht0)) c)
+    he2 (in_markOne hK (in_of_nil (hP2.2 e2 (by simp))) c) c1
+  have e1' := scanMono Γ M c1 _ _ e1 (max N M) (Nat.le_max_right _ _)
+  obtain ⟨st', hfin'⟩ := hcall (max N M) (Nat.le_max_left _ _) (o, st, c') (by
+    rw [toks_cat2, mark_callToks]; exact e1')
+  exact ⟨max N M + 1, o, st', c', hfin', ho, hfin⟩
+
 end PP
