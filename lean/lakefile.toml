@@ -3,4 +3,4 @@ defaultTargets = ["Ppinf"]
 
 [[lean_lib]]
 name = "Ppinf"
-roots = ["Phi", "Marks", "Semantics", "Read", "Check", "Origins", "Ids", "Consistent", "Lemma5"]
+roots = ["Phi", "Marks", "Semantics", "ArgsFacts", "Read", "Check", "Origins", "Ids", "Consistent", "Lemma5"]

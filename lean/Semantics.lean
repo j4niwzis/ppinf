@@ -92,26 +92,39 @@ def mark (e : Nat) (K : List Name) (xs : List Tok) : List Tok :=
 /-- F: a token keeps only its own spelling as hidden, where it was hidden. -/
 def finalize (xs : List Tok) : List Tok := xs.map fun x => { x with H := if x.s ∈ x.H then [x.s] else [] }
 
-/-! Arguments: split at commas outside nested parentheses; the closing parenthesis
-    returned with its hidden set (J). -/
+/-! Arguments: the tokens up to the matching closing parenthesis, returned with it (its
+    hidden set is J); split at commas outside nested parentheses; the variadic slot is the
+    suffix after the named ones, its own commas kept. -/
 
-def args : Nat → List Tok → List Tok → List (List Tok) → List Tok → Option (List (List Tok) × Tok × List Tok)
-  | _, [], _, _, _ => none
-  | d, x :: rest, cur, done, _ =>
-    if x.s == ")" then
-      if d == 0 then some ((done ++ [cur.reverse]), x, rest)
-      else args (d - 1) rest (x :: cur) done []
-    else if x.s == "(" then args (d + 1) rest (x :: cur) done []
-    else if x.s == "," && d == 0 then args d rest [] (done ++ [cur.reverse]) []
-    else args d rest (x :: cur) done []
+def closeAt : Nat → List Tok → List Tok → Option (List Tok × Tok × List Tok)
+  | _, [], _ => none
+  | d, x :: rest, acc =>
+    if x.s == ")" then (if d == 0 then some (acc.reverse, x, rest) else closeAt (d - 1) rest (x :: acc))
+    else if x.s == "(" then closeAt (d + 1) rest (x :: acc)
+    else closeAt d rest (x :: acc)
 
-/-- The arguments bound to the parameters: the named ones, and the variadic suffix joined by
-    its commas. -/
-def bind (arity : Nat) (variadic : Bool) (as : List (List Tok)) : Option (List (List Tok) × List Tok) :=
+def depthAfter (d : Nat) (x : Tok) : Nat := if x.s == "(" then d + 1 else if x.s == ")" then d - 1 else d
+
+def splitTop : Nat → List Tok → List Tok → List (List Tok)
+  | _, [], cur => [cur.reverse]
+  | d, x :: rest, cur =>
+    if x.s == "," && d == 0 then cur.reverse :: splitTop d rest []
+    else splitTop (depthAfter d x) rest (x :: cur)
+
+/-- What follows the `k`-th comma outside parentheses. -/
+def afterCommas : Nat → Nat → List Tok → List Tok
+  | 0, _, xs => xs
+  | _ + 1, _, [] => []
+  | k + 1, d, x :: rest =>
+    if x.s == "," && d == 0 then afterCommas k d rest else afterCommas (k + 1) (depthAfter d x) rest
+
+/-- The arguments bound to the parameters: the named ones, and the variadic suffix. -/
+def bind (arity : Nat) (variadic : Bool) (inner : List Tok) : Option (List (List Tok) × List Tok) :=
+  let as := splitTop 0 inner []
   if variadic then
     if as.length < arity then
       (if as.length + 1 == arity || (arity == 0) then some (as ++ List.replicate (arity - as.length) [], []) else none)
-    else some (as.take arity, List.intercalate [{ s := "," }] (as.drop arity))
+    else some (as.take arity, afterCommas arity 0 inner)
   else if arity == 0 then (if as == [[]] then some ([], []) else none)
   else if as.length == arity then some (as, []) else none
 
@@ -146,7 +159,7 @@ def scan (Γ : Env) : Nat → Nat → List Tok → Option (List Tok × List Step
       match rest with
       | open_ :: after' =>
         if open_.s != "(" then emit x (scan Γ n c rest) else
-        (args 0 after' [] [] []).bind fun a =>
+        (closeAt 0 after' []).bind fun a =>
         (bind arity variadic a.1).bind fun bd =>
         (subst Γ n (c + 1) body bd.1 bd.2).bind fun r =>
         (paste r.1).bind fun b =>

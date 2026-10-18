@@ -24,78 +24,8 @@ theorem all_append {Q : Tok → Prop} {xs ys} : All Q (xs ++ ys) ↔ All Q xs �
     | inl e => exact h1 t e
     | inr e => exact h2 t e
 
-theorem args_all {Q : Tok → Prop} : ∀ (xs : List Tok) (d : Nat) (cur : List Tok) (done : List (List Tok)) (acc : List Tok) as cl rest,
-    args d xs cur done acc = some (as, cl, rest) → All Q xs → All Q cur → (∀ a ∈ done, All Q a) →
-    (∀ a ∈ as, All Q a) ∧ Q cl ∧ All Q rest := by
-  intro xs
-  induction xs with
-  | nil => intro d cur done acc as cl rest h; simp [args] at h
-  | cons x xs ih =>
-    intro d cur done acc as cl rest h gx gc gd
-    have ⟨gx1, gx2⟩ := all_cons.mp gx
-    have grev : ∀ l : List Tok, All Q l → All Q l.reverse := fun l g t ht => g t (List.mem_reverse.mp ht)
-    unfold args at h
-    split at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl, rfl⟩ := h
-        refine ⟨?_, gx1, gx2⟩
-        intro a ha
-        cases List.mem_append.mp ha with
-        | inl e => exact gd a e
-        | inr e => simp at e; exact e ▸ grev _ gc
-      · exact ih _ _ _ _ _ _ _ h gx2 (all_cons.mpr ⟨gx1, gc⟩) gd
-    · split at h
-      · exact ih _ _ _ _ _ _ _ h gx2 (all_cons.mpr ⟨gx1, gc⟩) gd
-      · split at h
-        · refine ih _ _ _ _ _ _ _ h gx2 (fun _ h => nomatch h) ?_
-          intro a ha
-          cases List.mem_append.mp ha with
-          | inl e => exact gd a e
-          | inr e => simp at e; exact e ▸ grev _ gc
-        · exact ih _ _ _ _ _ _ _ h gx2 (all_cons.mpr ⟨gx1, gc⟩) gd
-
-theorem all_intercalate {Q : Tok → Prop} (hc : Q { s := "," }) : ∀ (as : List (List Tok)), (∀ a ∈ as, All Q a) →
-    All Q (List.intercalate [{ s := "," }] as)
-  | [], _ => by simp [List.intercalate]; exact fun _ h => nomatch h
-  | [a], h => by simp [List.intercalate]; exact h a (by simp)
-  | a :: b :: rest, h => by
-    rw [List.intercalate_cons_cons]
-    refine all_append.mpr ⟨all_append.mpr ⟨h a (by simp), ?_⟩, ?_⟩
-    · intro t ht; simp at ht; subst ht; exact hc
-    · exact all_intercalate hc (b :: rest) (fun x hx => h x (List.mem_cons_of_mem _ hx))
-
-theorem bind_all {Q : Tok → Prop} (hc : Q { s := "," }) (arity : Nat) (variadic : Bool) (as : List (List Tok)) named va
-    (h : bind arity variadic as = some (named, va)) (g : ∀ a ∈ as, All Q a) :
-    (∀ a ∈ named, All Q a) ∧ All Q va := by
-  have none_ : All Q [] := fun _ h => nomatch h
-  unfold bind at h
-  split at h
-  · split at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        refine ⟨?_, none_⟩
-        intro a ha
-        cases List.mem_append.mp ha with
-        | inl e => exact g a e
-        | inr e => rw [List.eq_of_mem_replicate e]; exact none_
-      · simp at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, rfl⟩ := h
-      exact ⟨fun a ha => g a (List.mem_of_mem_take ha),
-             all_intercalate hc _ (fun a ha => g a (List.mem_of_mem_drop ha))⟩
-  · split at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact ⟨fun a ha => by simp at ha, none_⟩
-      · simp at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact ⟨g, none_⟩
-      · simp at h
+theorem all_sublist {Q : Tok → Prop} {l m : List Tok} (h : l.Sublist m) (g : All Q m) : All Q l :=
+  fun t ht => g t (h.subset ht)
 
 /-! The mark of an origin, as a function `μ` given with the steps it covers. -/
 
@@ -171,7 +101,6 @@ theorem scanCons (Γ : Env) : ∀ n, ScanCons Γ n := by
   | succ n ih =>
     have sub := substCons_of_scan ih
     intro μ μ0 c xs out st c' e hμ g
-    have comma : Cons μ { s := "," } := μ0.symm
     cases xs with
     | nil => simp [scan] at e; obtain ⟨rfl, rfl, rfl⟩ := e; exact ⟨by simp, fun _ h => nomatch h⟩
     | cons x rest =>
@@ -204,13 +133,20 @@ theorem scanCons (Γ : Env) : ∀ n, ScanCons Γ n := by
               have := ih μ μ0 c _ out' st c' hr hμ gr
               exact ⟨this.1, all_cons.mpr ⟨gx, this.2⟩⟩
             · have ⟨_, ga⟩ := all_cons.mp gr
-              obtain ⟨⟨as, cl, rest'⟩, ha, e⟩ := bind_some e
+              obtain ⟨⟨inner, cl, rest'⟩, ha, e⟩ := bind_some e
               obtain ⟨⟨named, va⟩, hb, e⟩ := bind_some e
               obtain ⟨⟨r, st₁, c₁⟩, hs, e⟩ := bind_some e
               obtain ⟨b, _, e⟩ := bind_some e
               obtain ⟨st₂, hr, rfl⟩ := after_some e
-              have ⟨gas, gcl, grest⟩ := args_all _ _ _ _ _ _ _ _ ha ga (fun _ h => nomatch h) (by simp)
-              have ⟨gn, gv⟩ := bind_all comma _ _ _ _ _ hb gas
+              have heq := closeAt_eq _ _ _ _ _ _ ha
+              simp only [List.reverse_nil, List.nil_append] at heq
+              rw [heq] at ga
+              have ⟨gin, gcr⟩ := all_append.mp ga
+              have ⟨gcl, grest⟩ := all_cons.mp gcr
+              have ⟨hn, hv⟩ := bind_sub _ _ _ _ _ hb
+              have gn : ∀ a ∈ named, All (Cons μ) a := fun a ha =>
+                (hn a ha).elim (fun e => e ▸ (fun _ h => nomatch h)) (fun sl => all_sublist sl gin)
+              have gv := all_sublist hv gin
               have hstep := hμ _ (List.mem_append_right _ (List.mem_cons_self ..))
               have h₂ := ih μ μ0 _ _ out st₂ c' hr (fun s hs => hμ s (List.mem_append_right _ (List.mem_cons_of_mem _ hs)))
                 (all_append.mpr ⟨all_mark μ c _ hstep _, grest⟩)

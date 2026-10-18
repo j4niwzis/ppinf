@@ -5,7 +5,7 @@
   its origin; and every step's head is eligible, its mark is {m} ∪ H (object) or
   {m} ∪ (H ∩ J) (function).
 -/
-import Semantics
+import ArgsFacts
 
 namespace PP
 
@@ -45,78 +45,7 @@ theorem good_mark (e : Nat) (K : List Name) (xs : List Tok) : Good (mark e K xs)
   obtain ⟨x, _, rfl⟩ := ht
   exact sub_union K x.H
 
-/-- The arguments and the closing parenthesis come from the stream: good where it is. -/
-theorem args_good : ∀ (xs : List Tok) (d : Nat) (cur : List Tok) (done : List (List Tok)) (acc : List Tok) as cl rest,
-    args d xs cur done acc = some (as, cl, rest) → Good xs → Good cur → (∀ a ∈ done, Good a) →
-    (∀ a ∈ as, Good a) ∧ Sub cl.P cl.H ∧ Good rest := by
-  intro xs
-  induction xs with
-  | nil => intro d cur done acc as cl rest h; simp [args] at h
-  | cons x xs ih =>
-    intro d cur done acc as cl rest h gx gc gd
-    have ⟨gx1, gx2⟩ := good_cons.mp gx
-    have grev : ∀ l : List Tok, Good l → Good l.reverse := fun l g t ht => g t (List.mem_reverse.mp ht)
-    unfold args at h
-    split at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl, rfl⟩ := h
-        refine ⟨?_, gx1, gx2⟩
-        intro a ha
-        cases List.mem_append.mp ha with
-        | inl e => exact gd a e
-        | inr e => simp at e; exact e ▸ grev _ gc
-      · exact ih _ _ _ _ _ _ _ h gx2 (good_cons.mpr ⟨gx1, gc⟩) gd
-    · split at h
-      · exact ih _ _ _ _ _ _ _ h gx2 (good_cons.mpr ⟨gx1, gc⟩) gd
-      · split at h
-        · refine ih _ _ _ _ _ _ _ h gx2 good_nil ?_
-          intro a ha
-          cases List.mem_append.mp ha with
-          | inl e => exact gd a e
-          | inr e => simp at e; exact e ▸ grev _ gc
-        · exact ih _ _ _ _ _ _ _ h gx2 (good_cons.mpr ⟨gx1, gc⟩) gd
-
-theorem good_intercalate : ∀ (as : List (List Tok)), (∀ a ∈ as, Good a) →
-    Good (List.intercalate [{ s := "," }] as)
-  | [], _ => by simp [List.intercalate]; exact good_nil
-  | [a], h => by simp [List.intercalate]; exact h a (by simp)
-  | a :: b :: rest, h => by
-    rw [List.intercalate_cons_cons]
-    refine good_append.mpr ⟨good_append.mpr ⟨h a (by simp), ?_⟩, ?_⟩
-    · intro t ht; simp at ht; subst ht; intro x hx; simp at hx
-    · exact good_intercalate (b :: rest) (fun x hx => h x (List.mem_cons_of_mem _ hx))
-
-theorem bind_good (arity : Nat) (variadic : Bool) (as : List (List Tok)) named va
-    (h : bind arity variadic as = some (named, va)) (g : ∀ a ∈ as, Good a) :
-    (∀ a ∈ named, Good a) ∧ Good va := by
-  unfold bind at h
-  split at h
-  · split at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        refine ⟨?_, good_nil⟩
-        intro a ha
-        cases List.mem_append.mp ha with
-        | inl e => exact g a e
-        | inr e => rw [List.eq_of_mem_replicate e]; exact good_nil
-      · simp at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, rfl⟩ := h
-      exact ⟨fun a ha => g a (List.mem_of_mem_take ha),
-             good_intercalate _ (fun a ha => g a (List.mem_of_mem_drop ha))⟩
-  · split at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact ⟨fun a ha => by simp at ha, good_nil⟩
-      · simp at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact ⟨g, good_nil⟩
-      · simp at h
+theorem good_sublist {l m : List Tok} (h : l.Sublist m) (g : Good m) : Good l := fun t ht => g t (h.subset ht)
 
 theorem emit_some {x : Tok} {r : Option (List Tok × List Step × Nat)} {out st c'}
     (h : emit x r = some (out, st, c')) : ∃ out', r = some (out', st, c') ∧ out = x :: out' := by
@@ -251,13 +180,20 @@ theorem scanInv (Γ : Env) : ∀ n, ScanInv Γ n := by
               have := ih c _ out' st c' hr gr
               exact ⟨this.1, good_cons.mpr ⟨gx, this.2⟩⟩
             · have ⟨_, ga⟩ := good_cons.mp gr
-              obtain ⟨⟨as, cl, rest'⟩, ha, e⟩ := bind_some e
+              obtain ⟨⟨inner, cl, rest'⟩, ha, e⟩ := bind_some e
               obtain ⟨⟨named, va⟩, hb, e⟩ := bind_some e
               obtain ⟨⟨r, st₁, c₁⟩, hs, e⟩ := bind_some e
               obtain ⟨b, _, e⟩ := bind_some e
               obtain ⟨st₂, hr, rfl⟩ := after_some e
-              have ⟨gas, gcl, grest⟩ := args_good _ _ _ _ _ _ _ _ ha ga good_nil (by simp)
-              have ⟨gn, gv⟩ := bind_good _ _ _ _ _ hb gas
+              have heq := closeAt_eq _ _ _ _ _ _ ha
+              simp only [List.reverse_nil, List.nil_append] at heq
+              rw [heq] at ga
+              have ⟨gin, gcr⟩ := good_append.mp ga
+              have ⟨gcl, grest⟩ := good_cons.mp gcr
+              have ⟨hn, hv⟩ := bind_sub _ _ _ _ _ hb
+              have gn : ∀ a ∈ named, Good a := fun a ha =>
+                (hn a ha).elim (fun e => e ▸ good_nil) (fun sl => good_sublist sl gin)
+              have gv := good_sublist hv gin
               have h₂ := ih _ _ out st₂ c' hr (good_append.mpr ⟨good_mark _ _ _, grest⟩)
               have h₁ := sub body body 0 (c + 1) named va r st₁ c₁ (by unfold subst at hs; exact hs) gn gv
               refine ⟨?_, h₂.2⟩
