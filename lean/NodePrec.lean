@@ -53,4 +53,42 @@ theorem toks_prec (π : List Code) (m : Nat) (oN : List Tok) (Y1 Y2 : List (List
   simp only [B1, nm, tk, prm, plainOut, toks_t, toks_map_t]
   simp [toks, tokOf, callToks, joinArgs, baseToks, comma]
 
+theorem map_baseToks (f : Tok → Tok) (π : List Code) (Y1 Y2 : List (List Tok)) :
+    (baseToks π Y1 Y2).map f = f { s := "(" } :: f comma :: (callToks (f { s := fullName (π ++ [.f]) .self }) (f { s := "(" })
+      (f comma) (f { s := ")" }) (Y1.map (List.map f)) ++ (((Y2.map (List.map f)).flatMap fun o => f comma :: o) ++
+      [f { s := ")" }])) := by
+  simp [baseToks, callToks, map_joinArgs, map_flatMap_cons]
+
+/-- **The base `( , f ( ȳ ) , ȳ )`** expands to the tuple `( 0 , f(ȳ) , ȳ )`. -/
+theorem base_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code}
+    (IHf : NodeOK Γ f (π ++ [.f])) {L : List Helper} {K : List Name} (hK : In π L K) {Y1 Y2 : List (List Tok)}
+    {ys : List Nat} (hY1 : All2 (fun Y y => IsNum Y y) Y1 ys) (hY2 : All2 (fun Y y => IsNum Y y) Y2 ys)
+    (hys : ys.length = f.arity) (cm : Nat) :
+    ExpandsP Γ ((baseToks π Y1 Y2).map (markOne cm K)) (IsTuple 0 (f.eval ys) ys) := by
+  intro c0
+  let mk := markOne cm K
+  have num : ∀ {o : List Tok} {w : Nat}, IsNum o w → IsNum (o.map mk) w := fun h => isNum_markAll h cm K
+  have hY1m : All2 (fun Y y => IsNum Y y) (Y1.map (List.map mk)) ys := all2_map_fst (fun o y h => num h) hY1
+  have hY2m : All2 (fun Y y => IsNum Y y) (Y2.map (List.map mk)) ys := all2_map_fst (fun o y h => num h) hY2
+  obtain ⟨N, W, st, c1, eF, hW⟩ := IHf (mk { s := fullName (π ++ [.f]) .self }) (mk { s := "(" }) (mk comma)
+    (mk { s := ")" }) (Y1.map (List.map mk)) ys rfl (fun hm => child_not_in hK .f (mem_markOne_body.mp hm)) rfl rfl rfl
+    (by have := all2_length hY1m; omega) (argsOK_nums hp hY1m)
+    (fun n hn => in_child hK .f n (mem_markOne_body.mp (mem_inter.mp hn).1)) c0
+  let rest := ((Y2.map (List.map mk)).flatMap fun o => mk comma :: o) ++ [mk { s := ")" }]
+  have hrest : NameFree Γ rest := nameFree_append (nameFree_flat hp rfl (nameFree_nums hp hY2m))
+    (by intro t ht; simp at ht; subst ht; exact hp.2.1)
+  have e1 := scan_frame2 Γ _ rest N c0 (W, st, c1) eF (lastOK_num hp hW) _ _ (scan_nameFree' hrest c1)
+  have e2 := scan_nameFree_prefix Γ [mk { s := "(" }, mk comma] (by
+    intro t ht; simp at ht; rcases ht with rfl | rfl
+    · exact hp.1
+    · exact hp.2.2.1) e1
+  refine ⟨_, finalize ([mk { s := "(" }, mk comma] ++ (W ++ rest)), _, _, by
+    rw [map_baseToks]; simp only [expand]; rw [show mk { s := "(" } :: mk comma :: (callToks (mk { s := fullName (π ++ [.f]) .self })
+      (mk { s := "(" }) (mk comma) (mk { s := ")" }) (Y1.map (List.map mk)) ++ rest) =
+      [mk { s := "(" }, mk comma] ++ (callToks (mk { s := fullName (π ++ [.f]) .self }) (mk { s := "(" }) (mk comma)
+      (mk { s := ")" }) (Y1.map (List.map mk)) ++ rest) from rfl, e2]; rfl, ?_⟩
+  refine isTuple_map ⟨mk { s := "(" }, mk comma, mk { s := ")" }, [], W, Y2.map (List.map mk), ?_, rfl, rfl, rfl,
+    (show IsNum [] 0 from rfl), hW, hY2m⟩ _ (fun t => rfl)
+  simp [tupToks, joinArgs_cons_flat, rest]
+
 end PP
