@@ -91,4 +91,59 @@ theorem base_stage (Γ : Env) (hp : PunctFree Γ) {f g : Term} {π : List Code}
     (show IsNum [] 0 from rfl), hW, hY2m⟩ _ (fun t => rfl)
   simp [tupToks, joinArgs_cons_flat, rest]
 
+theorem all2_range_off1 {P : List Tok → Nat → Prop} {m : Nat} {Y : List (List Tok)} {a : Nat} {ys : List Nat}
+    (hys : ys.length = m) (h : All2 (fun j o => P o ((a :: ys).getD j 0)) ((List.range m).map (1 + ·)) Y) :
+    All2 P Y ys := by
+  obtain ⟨hl, hi⟩ := all2_iff.mp h
+  refine all2_iff.mpr ⟨by simp at hl; omega, fun i h1 h2 => ?_⟩
+  have := hi i (by simp; omega) h1
+  simp only [List.getElem_map, List.getElem_range] at this
+  rwa [show 1 + i = i + 1 by omega, List.getD_cons_succ, List.getD_eq_getElem?_getD,
+    List.getElem?_eq_getElem h2, Option.getD_some] at this
+
+/-- A call on arguments is an argument. -/
+theorem argShape_callA {x lp sep rp : Tok} (hx1 : x.s ≠ ")") (hx2 : x.s ≠ "(") (hx3 : x.s ≠ ",") (hlp : lp.s = "(")
+    (hsep : sep.s = ",") (hrp : rp.s = ")") (as : List (List Tok)) (h : ∀ A ∈ as, ArgShape A) :
+    ArgShape (callToks x lp sep rp as) := by
+  unfold ArgShape callToks
+  have hx1' : (x.s == ")") = false := by simpa using hx1
+  have hx2' : (x.s == "(") = false := by simpa using hx2
+  have hx3' : (x.s == ",") = false := by simpa using hx3
+  simp only [walk, hx1', hx2', hx3', hlp, Bool.false_eq_true, ite_false, Bool.false_and, beq_self_eq_true, ite_true]
+  rw [walk_append, walk_joinArgs sep hsep 1 (by decide) as (fun A hA => walk_shift (h A hA) 1)]
+  simp [walk, hrp]
+
+theorem walk_flatComma (sep : Tok) (hsep : sep.s = ",") (d : Nat) (hd : d ≠ 0) :
+    ∀ (Y : List (List Tok)), (∀ o ∈ Y, ArgShape o) → walk d (Y.flatMap fun o => sep :: o) = some d
+  | [], _ => rfl
+  | o :: Y, h => by
+    simp only [List.flatMap_cons, List.cons_append]
+    have hd' : (d == 0) = false := by simpa using hd
+    simp only [walk, hsep]
+    simp only [show ("," == ")") = false from rfl, show ("," == "(") = false from rfl, beq_self_eq_true, hd',
+      Bool.and_false, Bool.false_eq_true, ite_false]
+    rw [walk_append, walk_shift (h o (by simp)) d]
+    exact walk_flatComma sep hsep d hd Y (fun o' ho' => h o' (by simp [ho']))
+
+theorem argShape_base {π : List Code} {mk : Tok → Tok} (hmk : ∀ t, (mk t).s = t.s) {Y1 Y2 : List (List Tok)}
+    (h1 : ∀ o ∈ Y1, ArgShape o) (h2 : ∀ o ∈ Y2, ArgShape o) :
+    ArgShape (mk { s := "(" } :: mk comma :: (callToks (mk { s := fullName (π ++ [.f]) .self }) (mk { s := "(" })
+      (mk comma) (mk { s := ")" }) Y1 ++ ((Y2.flatMap fun o => mk comma :: o) ++ [mk { s := ")" }]))) := by
+  have hc := argShape_callA (x := mk { s := fullName (π ++ [.f]) .self }) (lp := mk { s := "(" }) (sep := mk comma)
+    (rp := mk { s := ")" }) (by rw [hmk]; exact fullName_ne_rp _ _) (by rw [hmk]; exact fullName_ne_lp _ _)
+    (by rw [hmk]; exact fullName_ne_comma _ _) (by rw [hmk]) (by rw [hmk]; rfl) (by rw [hmk]) Y1 h1
+  unfold ArgShape at *
+  simp only [walk, hmk, show ("(" == ")") = false from rfl, beq_self_eq_true, ite_true, Bool.false_eq_true, ite_false]
+  simp only [show (comma.s == ")") = false from rfl, show (comma.s == "(") = false from rfl,
+    show (comma.s == ",") = true from rfl, Bool.true_and, show ((1 : Nat) == 0) = false from rfl, ite_false,
+    Bool.false_eq_true]
+  rw [walk_append, walk_shift (by exact hc) 1]; simp only [Option.bind_some]
+  rw [walk_append, walk_flatComma (mk comma) (by rw [hmk]; rfl) 1 (by decide) Y2 h2]
+  simp [walk, hmk]
+
+theorem recV_eq (g : Term) (ys : List Nat) (v0 : Nat) : ∀ n,
+    recV g ys v0 n = Nat.rec (motive := fun _ => Nat) v0 (fun c v => g.eval (c :: v :: ys)) n
+  | 0 => rfl
+  | n + 1 => by simp only [recV]; rw [recV_eq g ys v0 n]
+
 end PP
