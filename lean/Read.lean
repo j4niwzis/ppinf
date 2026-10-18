@@ -74,7 +74,11 @@ def defines (src : String) : Env :=
 def input (s : String) : List Tok := (tokenize s).map fun t => { s := t }
 
 def run (Γ : Env) (fuel : Nat) (s : String) : Option (List String) :=
-  (expand Γ fuel (input s)).map (·.map (·.s))
+  (expand Γ fuel 1 (input s)).map fun (out, _, _) => out.map (·.s)
+
+/-- The steps of a run, as §2 numbers them (1, 2, ...; 0 is the input's origin). -/
+def steps (Γ : Env) (fuel : Nat) (s : String) : Option (List Step) :=
+  (expand Γ fuel 1 (input s)).map fun (_, st, _) => st
 
 def groups (out : List String) : Nat := out.count "~"
 

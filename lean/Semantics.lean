@@ -13,10 +13,24 @@ namespace PP
 
 abbrev Name := String
 
+/-- A token: its spelling, its hidden names, and -- for §2 -- its origin: the step that made
+    it (`o`, 0 for input) and that step's mark (`P`). -/
 structure Tok where
   s : String
   H : List Name := []
+  o : Nat := 0
+  P : List Name := []
   deriving Repr, DecidableEq, Inhabited
+
+/-- A rewrite step, as §2 sees it: the macro, its head and closing parenthesis (none for an
+    object macro), its mark, and its number. -/
+structure Step where
+  m : Name
+  head : Tok
+  close : Option Tok
+  mark : List Name
+  id : Nat
+  deriving Repr, Inhabited
 
 /-- A body element: a token, a parameter (its index; the variadic one is `va`), or `##`. -/
 inductive BTok where
@@ -71,7 +85,9 @@ def paste (xs : List RTok) : Option (List Tok) :=
     | acc, x :: rest => go (x :: acc) rest
   (go [] xs).map fun ys => ys.filterMap fun | .t x => some x | _ => none
 
-def mark (K : List Name) (xs : List Tok) : List Tok := xs.map fun x => { x with H := union K x.H }
+/-- M_K, by step `e`: every token of its replacement gets `K` and the origin `e`. -/
+def mark (e : Nat) (K : List Name) (xs : List Tok) : List Tok :=
+  xs.map fun x => { x with H := union K x.H, o := e, P := K }
 
 /-- F: a token keeps only its own spelling as hidden, where it was hidden. -/
 def finalize (xs : List Tok) : List Tok := xs.map fun x => { x with H := if x.s ∈ x.H then [x.s] else [] }
@@ -102,53 +118,73 @@ def bind (arity : Nat) (variadic : Bool) (as : List (List Tok)) : Option (List (
 def adjacentPaste (body : List BTok) (i : Nat) : Bool :=
   (i > 0 && body[i - 1]? == some .paste) || body[i + 1]? == some .paste
 
+/-- A token passed by, put before what the scan of the rest gives. -/
+def emit (x : Tok) (r : Option (List Tok × List Step × Nat)) : Option (List Tok × List Step × Nat) :=
+  r.map fun q => (x :: q.1, q.2.1, q.2.2)
+
+/-- A step's replacement scanned again with the rest: the steps of its arguments first, then
+    the step, then the rescan's. -/
+def after (step : Step) (st₁ : List Step) (r : Option (List Tok × List Step × Nat)) :
+    Option (List Tok × List Step × Nat) :=
+  r.map fun q => (q.1, st₁ ++ step :: q.2.1, q.2.2)
+
 mutual
-/-- S, with `fuel` rewrite steps at most. -/
-def scan (Γ : Env) : Nat → List Tok → Option (List Tok)
-  | 0, _ => none
-  | _ + 1, [] => some []
-  | n + 1, x :: rest =>
-    if x.s ∈ x.H then (scan Γ n rest).map (x :: ·) else
+/-- S, with `fuel` rewrite steps at most, steps numbered from `c`: the output, the steps
+    taken (in order), and the next number. -/
+def scan (Γ : Env) : Nat → Nat → List Tok → Option (List Tok × List Step × Nat)
+  | 0, _, _ => none
+  | _ + 1, c, [] => some ([], [], c)
+  | n + 1, c, x :: rest =>
+    if x.s ∈ x.H then emit x (scan Γ n c rest) else
     match Γ.find x.s with
-    | some (.obj body) => do
-      let r ← subst Γ n body [] []
-      let b ← paste r
-      scan Γ n (mark (x.s :: x.H) b ++ rest)
+    | some (.obj body) =>
+      (subst Γ n (c + 1) body [] []).bind fun r =>
+      (paste r.1).bind fun b =>
+      after { m := x.s, head := x, close := none, mark := x.s :: x.H, id := c } r.2.1
+        (scan Γ n r.2.2 (mark c (x.s :: x.H) b ++ rest))
     | some (.fn arity variadic body) =>
       match rest with
-      | open_ :: after =>
-        if open_.s != "(" then (scan Γ n rest).map (x :: ·) else do
-        let (as, close, after') ← args 0 after [] [] []
-        let (named, vaArg) ← bind arity variadic as
-        let r ← subst Γ n body named vaArg
-        let b ← paste r
-        scan Γ n (mark (x.s :: inter x.H close.H) b ++ after')
-      | [] => some [x]
-    | none => (scan Γ n rest).map (x :: ·)
+      | open_ :: after' =>
+        if open_.s != "(" then emit x (scan Γ n c rest) else
+        (args 0 after' [] [] []).bind fun a =>
+        (bind arity variadic a.1).bind fun bd =>
+        (subst Γ n (c + 1) body bd.1 bd.2).bind fun r =>
+        (paste r.1).bind fun b =>
+        after { m := x.s, head := x, close := some a.2.1, mark := x.s :: inter x.H a.2.1.H, id := c } r.2.1
+          (scan Γ n r.2.2 (mark c (x.s :: inter x.H a.2.1.H) b ++ a.2.2))
+      | [] => some ([x], [], c)
+    | none => emit x (scan Γ n c rest)
 
 /-- E = F ∘ S. -/
-def expand (Γ : Env) (n : Nat) (xs : List Tok) : Option (List Tok) := (scan Γ n xs).map finalize
+def expand (Γ : Env) (n c : Nat) (xs : List Tok) : Option (List Tok × List Step × Nat) :=
+  (scan Γ n c xs).map fun q => (finalize q.1, q.2.1, q.2.2)
 
 /-- sub_A(B): parameters next to `##` as they are (a placemarker where empty), others
     expanded on their own; other body tokens fresh. -/
-def subst (Γ : Env) (n : Nat) (body : List BTok) (named : List (List Tok)) (vaArg : List Tok) :
-    Option (List RTok) :=
-  substFrom Γ n body body 0 named vaArg
+def subst (Γ : Env) (n c : Nat) (body : List BTok) (named : List (List Tok)) (vaArg : List Tok) :
+    Option (List RTok × List Step × Nat) :=
+  substFrom Γ n body body 0 c named vaArg
 
-def substFrom (Γ : Env) (n : Nat) (whole : List BTok) : List BTok → Nat → List (List Tok) → List Tok → Option (List RTok)
-  | [], _, _, _ => some []
-  | b :: bs, i, named, vaArg => do
-    let here ← match b with
-      | .tok s => some [RTok.t { s }]
-      | .paste => some [RTok.op]
-      | .param j => one (named.getD j []) i
-      | .va => one vaArg i
-    let more ← substFrom Γ n whole bs (i + 1) named vaArg
-    return here ++ more
-where
-  one (a : List Tok) (i : Nat) : Option (List RTok) :=
-    if adjacentPaste whole i then some (if a.isEmpty then [RTok.pm] else a.map RTok.t)
-    else (expand Γ n a).map (·.map RTok.t)
+def substFrom (Γ : Env) (n : Nat) (whole : List BTok) :
+    List BTok → Nat → Nat → List (List Tok) → List Tok → Option (List RTok × List Step × Nat)
+  | [], _, c, _, _ => some ([], [], c)
+  | b :: bs, i, c, named, vaArg =>
+    (piece Γ n whole b i c named vaArg).bind fun p =>
+    (substFrom Γ n whole bs (i + 1) p.2.2 named vaArg).map fun q => (p.1 ++ q.1, p.2.1 ++ q.2.1, q.2.2)
+
+/-- One body element substituted. -/
+def piece (Γ : Env) (n : Nat) (whole : List BTok) (b : BTok) (i c : Nat) (named : List (List Tok))
+    (vaArg : List Tok) : Option (List RTok × List Step × Nat) :=
+  match b with
+  | .tok s => some ([RTok.t { s }], [], c)
+  | .paste => some ([RTok.op], [], c)
+  | .param j => one Γ n whole (named.getD j []) i c
+  | .va => one Γ n whole vaArg i c
+
+/-- A parameter: as it is next to `##` (a placemarker where empty), else expanded alone. -/
+def one (Γ : Env) (n : Nat) (whole : List BTok) (a : List Tok) (i c : Nat) : Option (List RTok × List Step × Nat) :=
+  if adjacentPaste whole i then some (if a.isEmpty then [RTok.pm] else a.map RTok.t, [], c)
+  else (expand Γ n c a).map fun q => (q.1.map RTok.t, q.2.1, q.2.2)
 end
 
 end PP
