@@ -1,0 +1,6 @@
+name = "ppinf"
+defaultTargets = ["Ppinf"]
+
+[[lean_lib]]
+name = "Ppinf"
+roots = ["Phi", "Marks", "Semantics", "Read", "Check"]
